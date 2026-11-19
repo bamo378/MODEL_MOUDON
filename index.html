@@ -14,7 +14,7 @@
     <img src="logo-model.png" alt="Model" class="logo-model">
     <div class="titles">
       <h1>Installation photovoltaïque, Moudon</h1>
-      <p>Comparaison des variantes V1, V2 et V3 · simulation au quart d'heure sur la courbe de charge réelle</p>
+      <p>Comparaison des variantes V1, V2 et V3 · simulation au quart d'heure sur la courbe de charge réelle du <b>01.10.2025 au 30.09.2026</b> <i class="tip" data-tip="Consommation : courbe de charge Romande Energie au quart d'heure du 01.10.2025 au 30.09.2026 (12 mois). Réglage automatique du pilotage de la batterie : courbe du 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes, réparties au quart d'heure.">i</i></p>
     </div>
   </div>
   <div class="soleol" id="soleolLogo"><span>SOLEOL</span><small>ENERGIE</small></div>
@@ -27,6 +27,7 @@
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
   <span class="status" id="status"></span>
+  <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
 </nav>
 
 <main>
@@ -92,6 +93,7 @@
 </section>
 </main>
 <div id="tipbox"></div>
+<div id="report"></div>
 <script src="app.js"></script>
 </body>
 </html>

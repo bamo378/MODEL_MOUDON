@@ -441,6 +441,104 @@ document.getElementById('detDate').onchange = () => renderDetail();
 document.getElementById('reset').onclick = () => { V = JSON.parse(JSON.stringify(DEF_VAR)); G = JSON.parse(JSON.stringify(DEF_GLOB)); tuneCache.clear(); BASE = null; save(); renderParams(); schedule(); };
 let timer = null;
 function schedule(){ document.getElementById('status').textContent = 'Calcul…'; clearTimeout(timer); timer = setTimeout(render, 60); }
+
+/* ---------------- Rapport PDF (impression du navigateur) ---------------- */
+function chartImg(cfg, w, h){
+  const c = document.createElement('canvas'); c.width = w*2; c.height = h*2; c.style.width = w+'px'; c.style.height = h+'px';
+  c.style.position = 'fixed'; c.style.left = '-5000px'; document.body.appendChild(c);
+  cfg.options = Object.assign({}, cfg.options, {responsive:false, animation:false, devicePixelRatio:2});
+  const fs = Chart.defaults.font.size; Chart.defaults.font.size = 15;
+  const ch = new Chart(c, cfg); Chart.defaults.font.size = fs; const url = ch.toBase64Image('image/png', 1); ch.destroy(); c.remove(); return url;
+}
+function report(expert){
+  const H = Math.round(G.horizon), names = RES.map(r=>r.v.name);
+  const best = RES.reduce((a,b,i)=> b.npv > RES[a].npv ? i : a, 0);
+  const fast = RES.reduce((a,b,i)=> (b.payback ?? 1e9) < (RES[a].payback ?? 1e9) ? i : a, 0);
+  const sorted = RES.map(r=>r.npv).sort((a,b)=>b-a), gap = sorted[0]-sorted[1];
+  const today = new Date().toLocaleDateString('fr-CH');
+  const th = '<thead><tr><th></th>' + names.map((n,i)=>`<th style="color:${COLORS[i]}">${n}</th>`).join('') + '</tr></thead>';
+  const row = (l,f,hl) => `<tr class="${hl?'hl':''}"><td>${l}</td>${RES.map(r=>`<td>${f(r)}</td>`).join('')}</tr>`;
+  const bat = r => r.hasBat ? `${fN(r.v.batKwh)} kWh / ${fN(r.v.batKw)} kW${r.mode===0?'':' (sans peak shaving)'}` : 'aucune';
+  const yrs = Array.from({length:H+1},(_,i)=>i);
+  const imgCum = chartImg({type:'line', data:{labels:yrs, datasets:RES.map((r,i)=>({label:r.v.name, data:[-Math.min(G.fp, r.price)].concat(r.rows.map(x=>x.cum)), borderColor:COLORS[i], borderWidth:2.5, pointRadius:0}))},
+    options:{plugins:{legend:{position:'bottom'}}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}}, 760, 300);
+  const imgPeak = chartImg({type:'line', data:{labels:MONTHS, datasets:[{label:'Sans PV', data:Array.from(BASE.peak), borderColor:GREY, borderDash:[5,4], borderWidth:2, pointRadius:2}].concat(RES.map((r,i)=>({label:r.v.name.split(' · ')[0], data:r.peakMonths, borderColor:COLORS[i], borderWidth:2, pointRadius:2})))},
+    options:{plugins:{legend:{position:'bottom'}}, scales:{x:{grid:{display:false}}, y:{...gridY, title:{display:true,text:'kW'}}}}}, 760, 260);
+  const imgEn = chartImg({type:'bar', data:{labels:RES.map(r=>r.v.name.split(' · ')[0]), datasets:[
+      {label:'Autoconsommé', data:RES.map(r=>r.autoconso/1000), backgroundColor:'#2a78d6'},
+      {label:'Surplus revendu', data:RES.map(r=>r.surplus/1000), backgroundColor:'#eda100'},
+      {label:'Injection totale (RUE)', data:RES.map(r=>r.rueProd/1000), backgroundColor:'#1baf7a'}]},
+    options:{plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true,grid:{display:false}}, y:{stacked:true, ...gridY, title:{display:true,text:'MWh/an'}}}}}, 380, 260);
+  const imgNpv = chartImg({type:'bar', data:{labels:RES.map(r=>r.v.name.split(' · ')[0]), datasets:[{data:RES.map(r=>r.npv), backgroundColor:COLORS}]},
+    options:{plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{...gridY, beginAtZero:true, title:{display:true,text:'CHF'}}}}}, 380, 260);
+
+  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">${expert?'Rapport détaillé':'Synthèse'} · comparaison des variantes V1, V2 et V3 · ${today}</div></div><div class="rsol"><span>SOLEOL</span><small>ENERGIE</small></div></div>`;
+  h += `<div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge Romande Energie au quart d'heure du <b>01.10.2025 au 30.09.2026</b> (12 mois, ${fN(BASE.imp.reduce((a,b)=>a+b,0)/1000)} MWh, pointe maximale ${fN(Math.max(...BASE.peak))} kW).<br>Réglage du pilotage de la batterie : courbe de charge du 01.01.2025 au 30.09.2025.<br>Production solaire : simulations PVsyst des variantes, réparties au quart d'heure sur la même période.</div>
+  <h2>En bref</h2>
+   <p>Trois variantes ont été simulées au quart d'heure sur la consommation réelle de l'usine (octobre 2025 à septembre 2026). Avec les hypothèses retenues, <b>${names[best]}</b> donne le meilleur résultat sur ${H} ans, avec ${fCHF(gap)} CHF d'avance sur la suivante. ${fast!==best ? `<b>${names[fast]}</b> est remboursée le plus vite (${fY(RES[fast].payback)}).` : `Elle est aussi remboursée le plus vite (${fY(RES[best].payback)}).`}</p>
+   <div class="box"><ul>
+    ${RES.map(r=>`<li><b>${r.v.name}</b> : ${fN(r.v.acKwc)} kWc en autoconsommation${r.v.rueKwc>0?` et ${fN(r.v.rueKwc)} kWc en injection totale`:''}, batterie ${bat(r)}. Investissement net ${fCHF(r.net)} CHF, entièrement payé après ${fY(r.payback)}, ${fN(r.tauxAc*100)} % de la production autoconsommée.</li>`).join('')}
+   </ul></div>`;
+  h += `<h2>Comparaison</h2><table>${th}<tbody>
+    ${row('Puissance en autoconsommation', r=>fN(r.v.acKwc,1)+' kWc')}
+    ${row('Puissance en injection totale (RUE)', r=>r.v.rueKwc>0?fN(r.v.rueKwc,1)+' kWc':'–')}
+    ${row('Batterie', bat)}
+    ${row('Prix de l\'offre TTC', r=>fCHF(r.price)+' CHF')}
+    ${row('Subventions RU + RUE', r=>fCHF(r.sub)+' CHF')}
+    ${row('Investissement net', r=>fCHF(r.net)+' CHF', 1)}
+    ${row('Gain de la 1re année', r=>fCHF(r.year1)+' CHF')}
+    ${row('Entièrement payé après', r=>fY(r.payback), 1)}
+    ${row(`Liquidités cumulées à ${H} ans`, r=>fCHF(r.cum)+' CHF')}
+    ${row('Gain net actualisé', r=>fCHF(r.npv)+' CHF', 1)}
+    ${row('Taux d\'autoconsommation', r=>fN(r.tauxAc*100,1)+' %')}
+    ${row('Consommation de l\'usine couverte', r=>fN(r.couverture*100,1)+' %')}
+    ${row('Pointe mensuelle moyenne (sans PV : '+fN(BASE.peak.reduce((a,b)=>a+b,0)/12)+' kW)', r=>fN(r.peakAvg)+' kW')}
+   </tbody></table>
+   <p class="note">Gain net actualisé : tout ce que la variante rapporte sur ${H} ans, ramené à aujourd'hui (taux ${fN(G.actu*100,1)} %), subventions comprises et investissement déduit.</p>`;
+  h += `<div class="keep"><h3>Quand l'installation est-elle payée ?</h3><img class="ch" src="${imgCum}"><p class="note">Chaque courbe montre l'argent cumulé une fois l'assurance, la maintenance, les intérêts et la dette payés. Les premières années, tout le cash-flow rembourse l'hypothèque (${fN(G.hyp*100,1)} %) ; la courbe monte ensuite chaque année.</p></div>`;
+  h += `<h2>Production et puissance</h2><div class="two"><div><img class="ch" src="${imgEn}"><p class="note">Autoconsommé : utilisé par l'usine, directement ou via la batterie. Surplus : revendu au réseau. Injection totale : installation séparée, entièrement revendue.</p></div><div><img class="ch" src="${imgNpv}"><p class="note">Gain net actualisé sur ${H} ans.</p></div></div>
+   <div class="keep"><h3>Pointe de puissance mois par mois</h3><img class="ch" src="${imgPeak}"><p class="note">La pointe la plus élevée de chaque mois est facturée ${fN(G.puiss,2)} CHF/kW. La batterie la réduit en se déchargeant au-dessus d'un seuil (peak shaving). En hiver, les pointes sont plus longues et la batterie en écrête moins.</p></div>
+   <h2>Comment lire ces résultats</h2>
+   <ul>
+    <li><b>Autoconsommation</b> : chaque kWh utilisé par l'usine évite un achat au réseau (${fN(RES[0].v.acPrice*100,1)} ct/kWh retenu). Le surplus est revendu ${fN(G.rev*100,2)} ct/kWh.</li>
+    <li><b>Injection totale (RUE)</b> : installation séparée dont toute la production est revendue ; elle reçoit une rétribution unique plus élevée (${fN(G.rueRate)} CHF/kWc${G.rueOn?', à confirmer par Pronovo':', considérée ici comme refusée'}).</li>
+    <li><b>Batterie</b> : en semaine, elle garde une réserve pour écrêter les pointes ; le week-end, elle stocke le surplus solaire.</li>
+    <li>Les montants dépendent des hypothèses ci-dessous ; un changement de tarif ou de subvention peut modifier le classement.</li>
+   </ul>`;
+  if (expert){
+    const sumP = a => a.reduce((x,y)=>x+y,0);
+    h += `<div class="pb"></div><h2>Gains annuels par poste (1re année, CHF)</h2><table>${th}<tbody>
+      ${row('Énergie non achetée', r=>fCHF(r.sEnergy))}${row('Puissance (pointes réduites)', r=>fCHF(r.sPeak))}${row('Énergie réactive', r=>fCHF(r.sQ))}
+      ${row('Revente du surplus', r=>fCHF(r.sExp))}${row('Revente de l\'injection totale', r=>fCHF(r.sRue))}${row('Total', r=>fCHF(r.year1), 1)}
+      ${row('dont apport de la batterie', r=>r.hasBat?fCHF(r.batPart):'–')}${row('Assurance + maintenance', r=>'−'+fCHF(r.dep))}</tbody></table>
+     <h2>Énergie et batterie</h2><table>${th}<tbody>
+      ${row('Production autoconsommation (MWh/an)', r=>fN(r.v.prodAc/1000))}${row('Production injection totale (MWh/an)', r=>fN(r.v.prodRue/1000))}
+      ${row('Autoconsommé (MWh/an)', r=>fN(r.autoconso/1000))}${row('Surplus revendu (MWh/an)', r=>fN(r.surplus/1000))}
+      ${row('Taux d\'autoconsommation sans / avec batterie', r=>fN(r.tauxAc0*100,1)+' % / '+fN(r.tauxAc*100,1)+' %')}
+      ${row('Soutiré au réseau (MWh/an)', r=>fN(sumP(r.impMonths)/1000))}
+      ${row('Seuil de pointe / réserve', r=>r.hasBat&&r.mode===0?fN(r.T)+' kW / '+fN(r.R*100)+' %':'–')}
+      ${row('Cycles de batterie par an', r=>r.hasBat?fN(r.cycles):'–')}</tbody></table>
+     <h2>Pointes mensuelles (kW)</h2><table><thead><tr><th>Mois</th><th>Sans PV</th>${names.map((n,i)=>`<th style="color:${COLORS[i]}">${n.split(' · ')[0]}</th>`).join('')}</tr></thead><tbody>
+      ${MONTHS.map((m,k)=>`<tr><td>${m}</td><td>${fN(BASE.peak[k])}</td>${RES.map(r=>`<td>${fN(r.peakMonths[k])}</td>`).join('')}</tr>`).join('')}</tbody></table>
+     <div class="pb"></div><h2>Liquidités cumulées par année (CHF)</h2><table><thead><tr><th>Année</th>${names.map((n,i)=>`<th style="color:${COLORS[i]}">${n.split(' · ')[0]} cash-flow</th><th style="color:${COLORS[i]}">${n.split(' · ')[0]} cumulé</th>`).join('')}</tr></thead><tbody>
+      ${RES[0].rows.map((_,y)=>`<tr><td>${y+1}</td>${RES.map(r=>`<td>${fCHF(r.rows[y].cf)}</td><td>${fCHF(r.rows[y].cum)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+     <h2>Hypothèses</h2><table>${th}<tbody>
+      ${VAR_FIELDS.filter(f=>f[0]!=='sec').map(f=>row(f[1], r=>f[2]===-1?(r.v[f[0]]?'oui':'non'):fN(r.v[f[0]], Math.max(f[2],0)))).join('')}</tbody></table>
+     <table><tbody>${GLOB_FIELDS.filter(f=>f[0]!=='sec').map(f=>`<tr><td>${f[1]}</td><td>${f[2]===-1?(G[f[0]]?'oui':'non'):fN(G[f[0]], Math.max(f[2],0))}</td></tr>`).join('')}</tbody></table>
+     <h2>Méthode et limites</h2><ul class="note">
+      <li>Consommation : courbe de charge réelle au quart d'heure, octobre 2025 à septembre 2026 (3,95 GWh). Production : profil au quart d'heure calé sur les totaux PVsyst des variantes.</li>
+      <li>Batterie : à chaque quart d'heure, le surplus solaire la charge ; au-dessus du seuil de pointe elle se décharge ; la réserve est gardée en semaine et libérée le week-end. ${G.auto?'Seuil et réserve réglés sur janvier à septembre 2025, puis appliqués à l\'année simulée.':'Seuil et réserve fixés manuellement.'}</li>
+      <li>Tarif de puissance et énergie réactive : factures Romande Energie. Prix des offres et des batteries : fichier de prix (TTC).</li>
+      <li>Non compris : remplacement d'onduleurs ou de batterie, évolution des tarifs, frais de raccordement. Une seule année de consommation, reproduite sur toute la durée.</li></ul>`;
+  }
+  h += `<p class="note" style="margin-top:14px">Résultats calculés avec les paramètres saisis dans le simulateur le ${today}. Document indicatif, ne constitue pas une offre ferme.</p>`;
+  const el = document.getElementById('report'); el.innerHTML = h;
+  const imgs = [...el.querySelectorAll('img')];
+  Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
+}
+document.getElementById('repClient').onclick = () => report(false);
+document.getElementById('repExpert').onclick = () => report(true);
+
 bindTips(document);
 renderParams();
 render();
