@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119h">
+<link rel="stylesheet" href="style.css?v=20261119i">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119h"></script>
-<script src="costs.js?v=20261119h"></script>
+<script src="data.js?v=20261119i"></script>
+<script src="costs.js?v=20261119i"></script>
 </head>
 <body>
 <header class="top">
@@ -31,6 +31,7 @@
   <button class="tab" data-tab="vert">Fichier Vert</button>
   <button class="tab" data-tab="fip">Flux Inv. propre</button>
   <span class="status" id="status"></span>
+  <div class="scenbox"><span>Peak shaving <i class="tip" data-tip="Théorique : pilotage parfait. Réaliste : marge de 30 kW sous le seuil et 15 % d'énergie en plus dans le quart d'heure. Prudent : marge de 50 kW, 25 % d'énergie en plus et 70 % seulement du gain de pointe dû à la batterie. S'applique aux trois variantes, à tous les onglets et aux PDF.">i</i></span><div class="seg" id="psScen"></div></div>
   <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
 </nav>
 
@@ -143,6 +144,6 @@
 </main>
 <div id="tipbox"></div>
 <div id="report"></div>
-<script src="app.js?v=20261119h"></script>
+<script src="app.js?v=20261119i"></script>
 </body>
 </html>

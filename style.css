@@ -173,3 +173,6 @@ input.xe:hover{border-color:#b89a22}input.xe:focus{outline:2px solid #1c3d5a;bac
 table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;white-space:normal;font-size:12.5px}table.why td:nth-child(2),table.why th:nth-child(2),table.why td:nth-child(3){text-align:left}
 .note-warn{background:#fff6e0;border-left:3px solid #e0a800;padding:6px 10px;border-radius:4px}
 .tabs{flex-wrap:wrap}.tab{white-space:nowrap;padding:9px 11px}.status{white-space:nowrap}.repbtns .btn{white-space:nowrap}
+.scenbox{display:flex;align-items:center;gap:6px;margin-left:12px;padding-bottom:6px;font-size:12px;color:var(--mut);white-space:nowrap}.scenbox .seg{margin:0}.scenbox .seg button{padding:5px 10px;font-size:12px}
+.scen-note{display:block;background:#eef2f6;border-radius:4px;padding:5px 9px;margin-bottom:6px;color:var(--acc)}
+#report .meta+.meta{margin-top:2px}

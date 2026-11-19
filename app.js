@@ -21,7 +21,7 @@ const DEF_VAR = [
 ];
 const DEF_GLOB = {rev:0.0741, puiss:9.47, prixQ:0.0282, rueOn:true, rueRate:520, ru1:360, ru2:300, ru3:250,
   deg:0.0035, assur:0.003, maint:0.002, hyp:0.02, actu:0.02, fp:0, horizon:25, subYear:1,
-  usable:0.88, eta:0.938, auto:true, gridChg:false};
+  usable:0.88, eta:0.938, auto:true, gridChg:false, psScen:'real'};
 
 const VAR_FIELDS = [
   ['sec','Installation'],
@@ -68,6 +68,12 @@ const GLOB_FIELDS = [
 
 let V = JSON.parse(JSON.stringify(DEF_VAR));
 let G = JSON.parse(JSON.stringify(DEF_GLOB));
+// Scénarios de peak shaving : marge sous le seuil (kW), énergie en plus dans le quart d'heure, part du gain batterie comptée
+const PS_SCEN = {
+  theo: {t:'Théorique', m:0,  o:0,    k:1,   d:'Pilotage parfait : la batterie connaît la consommation moyenne de chaque quart d\'heure et coupe exactement au seuil.'},
+  real: {t:'Réaliste',  m:30, o:0.15, k:1,   d:'Pilotage réel : la batterie vise 30 kW sous le seuil et dépense 15 % d\'énergie en plus, car elle réagit à la puissance instantanée qui varie dans le quart d\'heure.'},
+  prud: {t:'Prudent',   m:50, o:0.25, k:0.7, d:'Marge de 50 kW, 25 % d\'énergie en plus, et seuls 70 % du gain de pointe dû à la batterie sont comptés, pour couvrir les écarts de météo et de consommation d\'une année à l\'autre.'}};
+const scen = () => PS_SCEN[G.psScen] || PS_SCEN.real;
 try { const s = JSON.parse(localStorage.getItem('moudon_state')); if (s && s.V && s.G) { V = s.V; G = Object.assign({}, DEF_GLOB, s.G); } } catch (e) {}
 function save(){ try { localStorage.setItem('moudon_state', JSON.stringify({V, G})); } catch (e) {} }
 
@@ -90,7 +96,7 @@ const CAL = series(D.calStart, D.calN, D.calLoad, D.calPv, false);
 function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
   const Rw = Array.isArray(R) ? R[0] : R, Rs = Array.isArray(R) ? R[1] : R; // réserve hiver (oct.–mars) / été (avr.–sept.)
   // mode 0 : peak shaving + autoconsommation ; mode 1 : autoconsommation seule
-  const n = S.n, nm = S.nm;
+  const n = S.n, nm = S.nm, SC = mode ? {m:0, o:0} : scen();
   const peak = new Float64Array(nm), imp = new Float64Array(nm);
   let soc = cap*0.5, T = mode ? Infinity : T0, cur = -1, exp = 0, dis = 0, chg = 0, gchg = 0;
   const grid = keep ? new Float32Array(n) : null, socA = keep ? new Float32Array(n) : null;
@@ -103,7 +109,7 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
     if (cap > 0){
       const res = (S.wk[i] || mode) ? 0 : (S.su[i] ? Rs : Rw)*cap;
       if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
-      else if (x > T){ d = Math.min(x-T, pw, soc*eta/DT); kind = 3; }
+      else if (x > T - SC.m){ d = Math.min((x-(T-SC.m))*(1+SC.o), pw, soc*eta/DT); kind = 3; }
       else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
       else if (G.gridChg && soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; kind = 2; }
       soc += c*eta*DT - d/eta*DT;
@@ -125,7 +131,7 @@ function annualCost(r, ac, Q){
 const Q_CAL = Q_KVARH.slice(3); // janv. → sept., même ordre que la période de réglage
 const tuneCache = new Map();
 function tune(prodPerKwh, cap, pw, ac){
-  const key = [prodPerKwh, cap, pw, ac, G.puiss, G.rev, G.prixQ, G.eta, !!G.gridChg].join('|');
+  const key = [prodPerKwh, cap, pw, ac, G.puiss, G.rev, G.prixQ, G.eta, !!G.gridChg, G.psScen].join('|');
   if (tuneCache.has(key)) return tuneCache.get(key);
   const cost = (T, R) => annualCost(sim(CAL, prodPerKwh, cap, pw, T, R, G.eta, 0, false), ac, Q_CAL);
   // 1) seuil et réserve communs ; 2) réserve d'été séparée
@@ -158,7 +164,7 @@ function compute(v){
   const impB = sum(BASE.imp), imp = sum(r.imp);
   const qB = Q_KVARH.reduce((s,q,k)=>s+Math.max(q-0.5*BASE.imp[k],0),0), qV = Q_KVARH.reduce((s,q,k)=>s+Math.max(q-0.5*r.imp[k],0),0);
   const sEnergy = (impB - imp)*v.acPrice;
-  const sPeak = (sum(BASE.peak) - sum(r.peak))*G.puiss;
+  const sPeak = ((sum(BASE.peak) - sum(r0.peak)) + (mode === 0 ? scen().k : 1)*(sum(r0.peak) - sum(r.peak)))*G.puiss;
   const sQ = -(qV - qB)*G.prixQ;
   const sExp = r.exp*G.rev;
   const sRue = v.prodRue*G.rev;
@@ -504,7 +510,7 @@ function explainPS(r){
     const alts = [[Math.max(T-50,300), lo], [T, r], [T+50, hi]], bestAlt = alts.reduce((a,b)=> tot(b[1]) > tot(a[1]) ? b : a);
     const vSun = v.acPrice - G.rev/(G.eta*G.eta), vGrid = v.acPrice - v.acPrice/(G.eta*G.eta);
     h = `<p><b>${n} : ${fN(v.batKwh)} kWh / ${fN(v.batKw)} kW, peak shaving activé${G.auto ? ', réglage automatique' : ', réglage manuel'}.</b> ` +
-      (G.auto ? `Le simulateur a testé tous les seuils de 520 à 960 kW et plusieurs réserves sur la courbe de janvier à septembre 2025, et garde la combinaison qui coûte le moins cher (énergie + puissance + énergie réactive − revente).` : `Les valeurs viennent de l'onglet Paramètres.`) + `</p>
+      `<span class="scen-note">Scénario <b>${scen().t}</b> : ${scen().d}</span> ` + (G.auto ? `Le simulateur a testé tous les seuils de 520 à 960 kW et plusieurs réserves sur la courbe de janvier à septembre 2025, et garde la combinaison qui coûte le moins cher (énergie + puissance + énergie réactive − revente).` : `Les valeurs viennent de l'onglet Paramètres.`) + `</p>
       <table class="why"><tr><td>Seuil de pointe</td><td><b>${fN(T)} kW</b></td><td>Au-dessus, la batterie se décharge (jusqu'à ${fN(v.batKw)} kW).</td></tr>
       <tr><td>Réserve hiver (oct.–mars)</td><td><b>${fN(rw)} kWh</b> sur ${fN(cap)}</td><td>${r.R >= 0.999 ? 'Toute la batterie est gardée pour les pointes en semaine : en hiver les pointes durent des heures et le solaire ne la recharge pas.' : 'Énergie gardée pour les pointes en semaine ; le reste couvre l\'usine.'}</td></tr>
       <tr><td>Réserve été (avr.–sept.)</td><td><b>${fN(rs)} kWh</b> sur ${fN(cap)}</td><td>${r.Rs >= 0.999 ? 'Toute la batterie est gardée pour les pointes.' : `Au-dessus de ${fN(rs)} kWh, la batterie couvre l'usine ; le surplus solaire la remplit à nouveau.`}</td></tr></table>
@@ -561,7 +567,7 @@ function renderPSCost(r){
     (ps ? `<th>Besoin pire jour (kWh)</th><th>Heures au-dessus du seuil</th><th>Seuil tenu</th>` : '') + `</tr></thead><tbody>${rows}` +
     `<tr class="hl"><td>Total année</td><td></td><td></td><td></td><td></td><td>${fCHF(tS)}</td><td>${fCHF(tB)}</td><td>${fCHF(tS + tB)}</td>${ps?'<td></td><td></td><td></td>':''}</tr></tbody>`;
   document.getElementById('psCostTxt').innerHTML = `Chaque mois, Romande Energie facture la plus haute puissance soutirée sur un quart d'heure, à ${fN(G.puiss,2)} CHF par kW. Économie du mois = (pointe sans solaire − pointe avec solaire et batterie) × ${fN(G.puiss,2)} CHF. ` +
-    (ps ? `La batterie contient ${fN(r.cap)} kWh utiles : quand le besoin d'un jour de semaine dépasse cette quantité (surtout en hiver, quand l'usine reste des heures au-dessus du seuil et que le solaire produit peu), la pointe passe et compte pour tout le mois.` : 'Sans peak shaving, seul le solaire réduit la pointe.');
+    (ps && scen().k < 1 ? `Scénario prudent : seuls ${fN(scen().k*100)} % du gain de la batterie sont comptés dans les flux (${fCHF(r.sPeak)} CHF par an au total). ` : '') + (ps ? `La batterie contient ${fN(r.cap)} kWh utiles : quand le besoin d'un jour de semaine dépasse cette quantité (surtout en hiver, quand l'usine reste des heures au-dessus du seuil et que le solaire produit peu), la pointe passe et compte pour tout le mois.` : 'Sans peak shaving, seul le solaire réduit la pointe.');
   const cap = r.cap, rule = document.getElementById('psRules');
   rule.innerHTML = !r.hasBat ? '<p>Pas de batterie dans cette variante.</p>' : `
     <div class="kpirow" style="grid-template-columns:repeat(4,1fr)">
@@ -614,7 +620,7 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   render();
 });
 document.getElementById('detDate').onchange = () => renderDetail();
-document.getElementById('reset').onclick = () => { CO = [{},{},{}]; saveCO(); V = JSON.parse(JSON.stringify(DEF_VAR)); G = JSON.parse(JSON.stringify(DEF_GLOB)); tuneCache.clear(); BASE = null; save(); renderParams(); schedule(); };
+document.getElementById('reset').onclick = () => { CO = [{},{},{}]; saveCO(); V = JSON.parse(JSON.stringify(DEF_VAR)); G = JSON.parse(JSON.stringify(DEF_GLOB)); tuneCache.clear(); BASE = null; save(); renderParams(); renderScen(); schedule(); };
 let timer = null;
 function schedule(){ document.getElementById('status').textContent = 'Calcul…'; clearTimeout(timer); timer = setTimeout(render, 60); }
 
@@ -648,7 +654,7 @@ function report(expert){
   const imgNpv = chartImg({type:'bar', data:{labels:RES.map(r=>r.v.name.split(' · ')[0]), datasets:[{data:RES.map(r=>r.npv), backgroundColor:COLORS}]},
     options:{plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{...gridY, beginAtZero:true, title:{display:true,text:'CHF'}}}}}, 380, 260);
 
-  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">${expert?'Rapport détaillé':'Synthèse'} · comparaison des variantes V1, V2 et V3 · ${today}</div></div><img class="rsolimg" src="logo-soleol.png" alt="Soleol"></div>`;
+  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">${expert?'Rapport détaillé':'Synthèse'} · comparaison des variantes V1, V2 et V3 · ${today}</div><div class="meta">Scénario peak shaving : ${scen().t} – ${scen().d}</div></div><img class="rsolimg" src="logo-soleol.png" alt="Soleol"></div>`;
   h += `<div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge Romande Energie au quart d'heure du <b>01.10.2025 au 30.09.2026</b> (12 mois, ${fN(BASE.imp.reduce((a,b)=>a+b,0)/1000)} MWh, pointe maximale ${fN(Math.max(...BASE.peak))} kW).<br>Réglage du pilotage de la batterie : courbe de charge du 01.01.2025 au 30.09.2025.<br>Production solaire : simulations PVsyst des variantes, réparties au quart d'heure sur la même période.</div>
   <h2>En bref</h2>
    <p>Trois variantes ont été simulées au quart d'heure sur la consommation réelle de l'usine (octobre 2025 à septembre 2026). Avec les hypothèses retenues, <b>${names[best]}</b> donne le meilleur résultat sur ${H} ans, avec ${fCHF(gap)} CHF d'avance sur la suivante. ${fast!==best ? `<b>${names[fast]}</b> est remboursée le plus vite (${fY(RES[fast].payback)}).` : `Elle est aussi remboursée le plus vite (${fY(RES[best].payback)}).`}</p>
@@ -926,7 +932,7 @@ function renderXl(){
 function reportAct(only){
   if (typeof only !== 'number') only = null;
   const today = new Date().toLocaleDateString('fr-CH');
-  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire${only!==null?' · '+RES[only].v.name:''} · ${today} · document interne</div></div><img class="rsolimg" src="logo-soleol.png" alt="Soleol"></div>
+  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire${only!==null?' · '+RES[only].v.name:''} · ${today} · document interne</div><div class="meta">Scénario peak shaving : ${scen().t} – ${scen().d}</div></div><img class="rsolimg" src="logo-soleol.png" alt="Soleol"></div>
    <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes. Coûts : fichier de prix du 18.11.2026.</div>
    <h2>Synthèse des trois variantes</h2><table>${document.getElementById('actSum').innerHTML}</table>
    <p class="note">Les pages suivantes reprennent la présentation des fichiers Excel : Tableau client (flux financiers), Graph (cash-flow et liquidités cumulées) et Fichier Vert (coûts et marge)${only!==null?' pour '+RES[only].v.name:' pour chaque variante'}.</p>`;
@@ -942,6 +948,10 @@ function reportAct(only){
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
 }
+function renderScen(){ const el = document.getElementById('psScen'); if (!el) return;
+  el.innerHTML = Object.entries(PS_SCEN).map(([k,o]) => `<button data-s="${k}" class="${G.psScen===k?'on':''}" title="${o.d.replace(/"/g,'&quot;')}">${o.t}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { G.psScen = b.dataset.s; save(); renderScen(); renderParams(); schedule(); }); }
+renderScen();
 document.getElementById('repAct').onclick = reportAct;
 document.getElementById('fipPdf').onclick = () => reportAct(xlIdx);
 document.getElementById('vertPdf').onclick = () => reportAct(xlIdx);
@@ -951,7 +961,7 @@ document.getElementById('vertReset').onclick = () => { CO[xlIdx] = {}; saveCO();
 document.getElementById('fipReset').onclick = () => {
   const d = DEF_VAR[xlIdx]; ['acKwc','rueKwc','prodAc','prodRue','batKwh','batKw','price','acPrice','subCom'].forEach(k => { V[xlIdx][k] = d[k] || 0; });
   ['deg','fp','hyp','assur','maint','rev','puiss','prixQ'].forEach(k => { G[k] = DEF_GLOB[k]; }); delete V[xlIdx].fipPuiss; delete V[xlIdx].fipQ;
-  tuneCache.clear(); BASE = null; save(); renderParams(); schedule(); };
+  tuneCache.clear(); BASE = null; save(); renderParams(); renderScen(); schedule(); };
 
 bindTips(document);
 renderParams();
