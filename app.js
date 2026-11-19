@@ -13,7 +13,7 @@ const MONTHS = ['oct. 25','nov. 25','déc. 25','janv. 26','févr. 26','mars 26',
 /* ---------------- Paramètres par défaut (fichiers) ---------------- */
 const DEF_VAR = [
   {name:'V1 · RU + RUE', acKwc:1005.48, prodAc:906096, rueKwc:3195.29, prodRue:3534250, price:3171600,
-   batOn:true, psOn:true, batKwh:500, batKw:125, batReduc:99336, acPrice:0.097, T:730, R:0.8, Rs:0.8},
+   batOn:true, psOn:true, batKwh:514, batKw:250, batReduc:99336, acPrice:0.097, T:730, R:0.8, Rs:0.8},
   {name:'V2 · Tout en autoconsommation', acKwc:4200.77, prodAc:4576824, rueKwc:0, prodRue:0, price:3276600,
    batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:199024, acPrice:0.097, T:640, R:1, Rs:1},
   {name:'V3 · RU, moins de panneaux', acKwc:2912.07, prodAc:3114100, rueKwc:0, prodRue:0, price:2169500,
@@ -32,12 +32,13 @@ const VAR_FIELDS = [
   ['price','Prix de l\'offre TTC (CHF)',0,'Prix clé en main à mettre dans l\'offre, batterie comprise (fichier vert).'],
   ['acPrice','Valeur du kWh autoconsommé (CHF/kWh)',4,'Prix évité pour chaque kWh qui n\'est plus acheté au réseau (fichiers de flux : 9.7 ct).'],
   ['sec','Batterie'],
-  ['batKwh','Capacité (kWh)',0,'Capacité nominale. V1 : 500 kWh ; V2 et V3 : Pylontech A1000-OMNI 1 MWh.'],
-  ['batKw','Puissance de charge et décharge (kW)',0,'Puissance maximale que la batterie peut fournir ou absorber. V1 : 125 kW ; Pylontech : 500 kW.'],
+  ['batKwh','Capacité (kWh)',0,'Capacité nominale. V1 : 2 × Sungrow PowerStack ST255CS de 257 kWh = 514 kWh ; V2 et V3 : Pylontech A1000-OMNI 1 MWh.'],
+  ['batKw','Puissance de charge et décharge (kW)',0,'Puissance maximale que la batterie peut fournir ou absorber. V1 : 2 × 125 kW = 250 kW ; Pylontech : 500 kW.'],
   ['batReduc','Baisse du prix si pas de batterie (CHF TTC)',0,'Montant retiré du prix de l\'offre quand la batterie est désactivée : coût de la batterie du fichier vert avec la même marge que l\'offre (V3 : génie civil de la batterie compris).'],
   ['T','Seuil de pointe visé (kW)',0,'Au-dessus de ce soutirage, la batterie se décharge pour écrêter la pointe. Si une pointe plus haute passe quand même, le seuil remonte jusqu\'à la fin du mois. Utilisé si le réglage automatique est désactivé.'],
-  ['R','Réserve pour les pointes, hiver oct.–mars (0 à 1)',2,'Part de la capacité gardée en semaine pour le peak shaving d\'octobre à mars. Au-dessus de cette réserve, la batterie couvre la consommation. 1 = la batterie ne sert qu\'aux pointes en semaine. Le week-end la réserve est libérée. Utilisé si le réglage automatique est désactivé.'],
+  ['R','Réserve pour les pointes, hiver oct.–mars (0 à 1)',2,'Part de la capacité gardée en semaine pour le peak shaving d\'octobre à mars. Au-dessus de cette réserve, la batterie couvre la consommation. 1 = la batterie ne sert qu\'aux pointes en semaine. La réserve est gardée aussi le week-end, sauf si l\'option ci-dessous est activée. Utilisé si le réglage automatique est désactivé.'],
   ['Rs','Réserve pour les pointes, été avr.–sept. (0 à 1)',2,'Même chose d\'avril à septembre. En été le surplus solaire recharge la batterie : une réserve plus basse permet de vider le reste la nuit pour l\'usine. Utilisé si le réglage automatique est désactivé.'],
+  ['wkFree','Libérer la réserve le week-end',-1,'Activé : du vendredi 22h au dimanche 20h, la batterie se vide pour l\'usine. Désactivé (par défaut) : la réserve est gardée aussi le week-end. Sans recharge sur le réseau, c\'est plus rentable : la batterie reste pleine pour les pointes du lundi matin, le surplus solaire du week-end la remplit.'],
 ];
 const GLOB_FIELDS = [
   ['sec','Tarifs'],
@@ -75,6 +76,8 @@ const PS_SCEN = {
   prud: {t:'Prudent',   m:50, o:0.25, k:0.7, d:'Marge de 50 kW, 25 % d\'énergie en plus, et seuls 70 % du gain de pointe dû à la batterie sont comptés, pour couvrir les écarts de météo et de consommation d\'une année à l\'autre.'}};
 const scen = () => PS_SCEN[G.psScen] || PS_SCEN.real;
 try { const s = JSON.parse(localStorage.getItem('moudon_state')); if (s && s.V && s.G) { V = s.V; G = Object.assign({}, DEF_GLOB, s.G); } } catch (e) {}
+// Mise à jour des valeurs enregistrées dans le navigateur : batterie V1 = 2 × ST255CS (514 kWh / 250 kW)
+if (V[0] && V[0].batKwh === 500 && V[0].batKw === 125){ V[0].batKwh = 514; V[0].batKw = 250; }
 function save(){ try { localStorage.setItem('moudon_state', JSON.stringify({V, G})); } catch (e) {} }
 
 /* ---------------- Préparation des séries ---------------- */
@@ -93,6 +96,7 @@ const YEAR = series(D.start, D.n, D.load, D.pv, true);
 const CAL = series(D.calStart, D.calN, D.calLoad, D.calPv, false);
 
 /* ---------------- Simulation quart d'heure ---------------- */
+let WKF = false; // réserve libérée le week-end (option par variante, désactivée par défaut)
 function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
   const Rw = Array.isArray(R) ? R[0] : R, Rs = Array.isArray(R) ? R[1] : R; // réserve hiver (oct.–mars) / été (avr.–sept.)
   // mode 0 : peak shaving + autoconsommation ; mode 1 : autoconsommation seule
@@ -107,7 +111,7 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
     let c = 0, d = 0, kind = 0; // kind : 1 charge solaire, 2 charge réseau, 3 décharge pointe, 4 décharge autoconso
     if (keep) TA[i] = T;
     if (cap > 0){
-      const res = (S.wk[i] || mode) ? 0 : (S.su[i] ? Rs : Rw)*cap;
+      const res = ((S.wk[i] && WKF) || mode) ? 0 : (S.su[i] ? Rs : Rw)*cap;
       if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
       else if (x > T - SC.m){ d = Math.min((x-(T-SC.m))*(1+SC.o), pw, soc*eta/DT); kind = 3; }
       else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
@@ -131,7 +135,7 @@ function annualCost(r, ac, Q){
 const Q_CAL = Q_KVARH.slice(3); // janv. → sept., même ordre que la période de réglage
 const tuneCache = new Map();
 function tune(prodPerKwh, cap, pw, ac){
-  const key = [prodPerKwh, cap, pw, ac, G.puiss, G.rev, G.prixQ, G.eta, !!G.gridChg, G.psScen].join('|');
+  const key = [prodPerKwh, cap, pw, ac, WKF, G.puiss, G.rev, G.prixQ, G.eta, !!G.gridChg, G.psScen].join('|');
   if (tuneCache.has(key)) return tuneCache.get(key);
   const cost = (T, R) => annualCost(sim(CAL, prodPerKwh, cap, pw, T, R, G.eta, 0, false), ac, Q_CAL);
   // 1) seuil et réserve communs ; 2) réserve d'été séparée
@@ -157,6 +161,7 @@ function compute(v){
   const cap = hasBat ? v.batKwh*G.usable : 0, pw = hasBat ? v.batKw : 0;
   let T = v.T, R = v.R, Rs = v.Rs ?? v.R;
   const mode = (hasBat && v.psOn) ? 0 : 1;
+  WKF = v.wkFree === true;
   if (hasBat && v.psOn && G.auto){ const t = tune(v.prodAc, cap, pw, v.acPrice); T = t.T; R = t.R; Rs = t.Rs; }
   const r = sim(YEAR, v.prodAc, cap, pw, T, [R, Rs], G.eta, mode, true);
   const r0 = hasBat ? sim(YEAR, v.prodAc, 0, 0, 1e9, 1, G.eta, 1, false) : r;
@@ -428,7 +433,7 @@ function renderPS(){
     const L = S.load[i], P = r.v.prodAc*S.pv[i], x = L - P, y = sim_.grid[i];
     const c = sim_.ch[i], dd = sim_.dis15[i], k = sim_.kind[i];
     ld.push(L); pv.push(P); net.push(Math.max(x,0)); gr.push(Math.max(y,0)); thr.push(hasBat && r.mode===0 && isFinite(sim_.thr[i]) ? sim_.thr[i] : null);
-    rsv.push(hasBat && r.mode===0 ? (S.wk[i] ? 0 : (S.su[i] ? r.Rs : r.R)*r.cap) : null); cS.push(k===1 ? c : 0); cG.push(k===2 ? c : 0); dP.push(k===3 ? -dd : 0); dA.push(k===4 ? -dd : 0); so.push(sim_.soc[i]);
+    rsv.push(hasBat && r.mode===0 ? ((S.wk[i] && r.v.wkFree === true) ? 0 : (S.su[i] ? r.Rs : r.R)*r.cap) : null); cS.push(k===1 ? c : 0); cG.push(k===2 ? c : 0); dP.push(k===3 ? -dd : 0); dA.push(k===4 ? -dd : 0); so.push(sim_.soc[i]);
     E.load += L*DT; E.pv += P*DT; E.direct += Math.min(L,P)*DT;
     if (k===1) E.pvBat += c*DT; if (k===2) E.gridBat += c*DT; if (k===3) E.batPeak += dd*DT; if (k===4) E.batAc += dd*DT;
     E.pvSold += Math.max(-y,0)*DT; E.imp += Math.max(y,0)*DT;
@@ -523,7 +528,7 @@ function explainPS(r){
       <p><b>Mois où le seuil tient :</b> ${held.length ? held.join(', ') : 'aucun'}.</p>
       ${why.energie.length ? `<p><b>Batterie vide au moment de la pointe :</b> ${why.energie.join(' ; ')}. ${G.gridChg ? `La pointe a duré trop longtemps pour l'énergie disponible (${fN(cap)} kWh utiles), surtout en hiver quand le solaire ne recharge pas.` : `Sans recharge sur le réseau, la batterie (${fN(cap)} kWh utiles) ne se remplit qu'au soleil : tôt le matin, le soir ou après des jours gris, elle était vide ou trop basse au moment de la pointe.`}</p>` : ''}
       ${why.puissance.length ? `<p><b>Puissance de la batterie trop faible :</b> ${why.puissance.join(' ; ')}. L'usine a dépassé le seuil de plus de ${fN(v.batKw)} kW, la puissance maximale de décharge : la batterie ne peut couper que ${fN(v.batKw)} kW.</p>` : ''}
-      ${why.weekend.length ? `<p><b>Pointe pendant le week-end :</b> ${why.weekend.join(' ; ')}. Le week-end, la réserve est libérée pour stocker le solaire ; la batterie n'avait plus assez d'énergie.</p>` : ''}
+      ${why.weekend.length ? `<p><b>Pointe pendant le week-end :</b> ${why.weekend.join(' ; ')}. ${v.wkFree === true ? `Le week-end, la réserve est libérée pour l'usine ; la batterie n'avait plus assez d'énergie.` : `La batterie, vidée par une pointe précédente, ne s'était pas assez rechargée au soleil.`}</p>` : ''}
       ${held.length < 12 ? `<p class="cap">Même quand le seuil ne tient pas, la pointe de ces mois reste plus basse que sans batterie.</p>` : ''}
       <p><b>Pourquoi la batterie reste parfois à sa réserve sans servir l'usine ?</b> Parce qu'un kWh gardé pour une pointe vaut beaucoup plus qu'un kWh consommé :</p>
       <ul>
@@ -580,7 +585,7 @@ function renderPSCost(r){
       ${ps ? `<li><b>L'usine tire plus de ${fN(T)} kW :</b> la batterie se décharge (jusqu'à ${fN(v.batKw)} kW) pour que le réseau ne fournisse pas plus que le seuil. Si une pointe passe quand même, le seuil remonte jusqu'à la fin du mois, puisque la pointe facturée est déjà atteinte.</li>
       <li><b>Sous le seuil, batterie au-dessus de la réserve :</b> l'énergie en trop couvre la consommation de l'usine.</li>
       ${G.gridChg ? `<li><b>Bien sous le seuil (moins de ${fN(T-100)} kW) et batterie sous la réserve :</b> recharge sur le réseau jusqu'à la réserve seulement, sans dépasser ${fN(T-50)} kW de soutirage.</li>` : `<li><b>Jamais de recharge sur le réseau :</b> la batterie ne se remplit qu'avec le surplus solaire. Quand le soleil ne suffit pas (hiver, mauvais temps), elle peut rester vide plusieurs jours et ne coupe alors plus les pointes.</li>`}
-      <li><b>Week-end (vendredi 22h – dimanche 20h) :</b> pas de réserve, la batterie couvre l'usine et se remplit au soleil.</li>` :
+      ${v.wkFree === true ? `<li><b>Week-end (vendredi 22h – dimanche 20h) :</b> pas de réserve, la batterie couvre l'usine et se remplit au soleil.</li>` : `<li><b>Week-end :</b> la réserve est gardée aussi ; le surplus solaire du week-end remplit la batterie, qui est pleine pour les pointes du lundi matin.</li>`}` :
       `<li><b>Sans peak shaving :</b> la batterie couvre la consommation de l'usine dès qu'elle contient de l'énergie.</li>`}
     </ol>
     ${ps ? `<p class="cap">Pourquoi garder la réserve : une seule pointe ratée coûte (kW au-dessus du seuil) × ${fN(G.puiss,2)} CHF pour tout le mois, par exemple 240 kW = ${fCHF(240*G.puiss)} CHF. Vider la batterie la nuit pour l'usine ne rapporte qu'environ 1 ct par kWh (on économise ${fN(v.acPrice*100,1)} ct, mais on la recharge avec du solaire qui aurait été revendu ${fN(G.rev*100,2)} ct, avec ${fN((1-G.eta*G.eta)*100)} % de pertes).</p>` : ''}`;
@@ -684,7 +689,7 @@ function report(expert){
    <ul>
     <li><b>Autoconsommation</b> : chaque kWh utilisé par l'usine évite un achat au réseau (${fN(RES[0].v.acPrice*100,1)} ct/kWh retenu). Le surplus est revendu ${fN(G.rev*100,2)} ct/kWh.</li>
     <li><b>Injection totale (RUE)</b> : installation séparée dont toute la production est revendue ; elle reçoit une rétribution unique plus élevée (${fN(G.rueRate)} CHF/kWc${G.rueOn?', à confirmer par Pronovo':', considérée ici comme refusée'}).</li>
-    <li><b>Batterie</b> : en semaine, elle garde une réserve pour écrêter les pointes ; le week-end, elle stocke le surplus solaire.</li>
+    <li><b>Batterie</b> : chargée uniquement par le surplus solaire ; elle garde une réserve pour écrêter les pointes et ne donne à l'usine que ce qui dépasse cette réserve.</li>
     <li>Les montants dépendent des hypothèses ci-dessous ; un changement de tarif ou de subvention peut modifier le classement.</li>
    </ul>`;
   if (expert){
@@ -709,7 +714,7 @@ function report(expert){
      <table><tbody>${GLOB_FIELDS.filter(f=>f[0]!=='sec').map(f=>`<tr><td>${f[1]}</td><td>${f[2]===-1?(G[f[0]]?'oui':'non'):fN(G[f[0]], Math.max(f[2],0))}</td></tr>`).join('')}</tbody></table>
      <h2>Méthode et limites</h2><ul class="note">
       <li>Consommation : courbe de charge réelle au quart d'heure, octobre 2025 à septembre 2026 (3,95 GWh). Production : profil au quart d'heure calé sur les totaux PVsyst des variantes.</li>
-      <li>Batterie : à chaque quart d'heure, le surplus solaire la charge ; au-dessus du seuil de pointe elle se décharge ; la réserve est gardée en semaine et libérée le week-end. ${G.auto?'Seuil et réserve réglés sur janvier à septembre 2025, puis appliqués à l\'année simulée.':'Seuil et réserve fixés manuellement.'}</li>
+      <li>Batterie : à chaque quart d'heure, le surplus solaire la charge ; au-dessus du seuil de pointe elle se décharge ; la réserve est gardée toute la semaine (option : libérée le week-end) ; pas de recharge sur le réseau. ${G.auto?'Seuil et réserve réglés sur janvier à septembre 2025, puis appliqués à l\'année simulée.':'Seuil et réserve fixés manuellement.'}</li>
       <li>Tarif de puissance et énergie réactive : factures Romande Energie. Prix des offres et des batteries : fichier de prix (TTC).</li>
       <li>Non compris : remplacement d'onduleurs ou de batterie, évolution des tarifs, frais de raccordement. Une seule année de consommation, reproduite sur toute la durée.</li></ul>`;
   }
