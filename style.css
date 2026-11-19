@@ -149,3 +149,27 @@ input.xe:hover{border-color:#b89a22}input.xe:focus{outline:2px solid #1c3d5a;bac
 .xlpage{overflow-x:auto}
 .rules{margin:4px 0 8px;padding-left:20px;font-size:13px}.rules li{margin:3px 0}
 #psCost th{white-space:normal;vertical-align:bottom}
+@media print{
+  #report .xlpage{break-before:page;break-after:auto;break-inside:avoid;min-width:0;width:100%;font-size:9pt}
+  #report .tablewrap{overflow:visible}
+  #report .xlhead{margin-bottom:10px}
+  #report .xt{font-size:8pt;margin-bottom:9px}#report .xt td{padding:0 4px}
+  #report .xcf{font-size:10pt}#report .xprk{margin-top:10px}
+  #report .xgbox canvas,#report .xgbox img{max-height:105mm;object-fit:contain}
+  #report .vt{font-size:6.8pt;table-layout:auto}#report .vt td{padding:0 3px;line-height:1.25}
+  #report .vt td.n{white-space:normal;font-size:6.2pt;max-width:62mm;min-width:0}
+  #report .vt td:first-child{white-space:normal;max-width:70mm}
+}
+@media print{
+  #report .vt td,#report .xt td{text-align:left}
+  #report .vt td.r,#report .xt td.r,#report .xt td.l{text-align:right}#report .xt td.c{text-align:center}
+  #report .vt{font-size:7.6pt}#report .vt td.n{font-size:6.6pt}
+}
+.logo-soleol{height:38px}
+.xllogoimg{height:30px}
+#report img.rsolimg{height:26px}
+@media print{#report .xllogoimg{height:24px}}
+.why-txt p{margin:6px 0;font-size:13px}.why-txt ul{margin:4px 0 6px;padding-left:20px;font-size:13px}.why-txt li{margin:3px 0}
+table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;white-space:normal;font-size:12.5px}table.why td:nth-child(2),table.why th:nth-child(2),table.why td:nth-child(3){text-align:left}
+.note-warn{background:#fff6e0;border-left:3px solid #e0a800;padding:6px 10px;border-radius:4px}
+.tabs{flex-wrap:wrap}.tab{white-space:nowrap;padding:9px 11px}.status{white-space:nowrap}.repbtns .btn{white-space:nowrap}
