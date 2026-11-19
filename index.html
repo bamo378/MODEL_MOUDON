@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119b">
+<link rel="stylesheet" href="style.css?v=20261119c">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119b"></script>
-<script src="costs.js?v=20261119b"></script>
+<script src="data.js?v=20261119c"></script>
+<script src="costs.js?v=20261119c"></script>
 </head>
 <body>
 <header class="top">
@@ -105,7 +105,8 @@
     <div class="seg" id="vertSel"></div>
     <div class="toggles" id="vertTog" style="margin-bottom:12px"></div>
     <button class="btn sm" id="vertReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
-    <button class="btn sm" id="vertPdf">Rapport PDF actionnaire</button>
+    <button class="btn sm" id="vertPdf" title="Tableau client, Graph et Fichier Vert de la variante affichée">PDF de cette variante</button>
+    <button class="btn sm" id="vertPdfAll" title="Synthèse puis les trois variantes">PDF des 3 variantes</button>
   </div>
   <p class="cap" style="margin:-4px 0 12px">Même feuille que le fichier Excel « Fichier Vert ». Les cases jaunes se modifient : tapez la valeur puis Entrée. Le total, la marge et la marge cumulée se recalculent.</p>
   <div class="xlpages" id="vertPages"></div>
@@ -117,7 +118,8 @@
     <div class="seg" id="fipSel"></div>
     <div class="toggles" id="fipTog" style="margin-bottom:12px"></div>
     <button class="btn sm" id="fipReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
-    <button class="btn sm" id="fipPdf">Rapport PDF actionnaire</button>
+    <button class="btn sm" id="fipPdf" title="Tableau client, Graph et Fichier Vert de la variante affichée">PDF de cette variante</button>
+    <button class="btn sm" id="fipPdfAll" title="Synthèse puis les trois variantes">PDF des 3 variantes</button>
   </div>
   <p class="cap" style="margin:-4px 0 12px">Mêmes feuilles que les fichiers Excel « Flux Inv. propre » (Tableau client et Graph). Les cases jaunes se modifient : tapez la valeur puis Entrée. Autoconsommation, revente et peak shaving viennent de la simulation au quart d'heure et suivent les boutons Batterie et Peak shaving. Les taux (hypothèque, assurance, maintenance, prix de vente…) sont communs aux trois variantes.</p>
   <div class="xlpages" id="fipPages"></div>
@@ -133,6 +135,6 @@
 </main>
 <div id="tipbox"></div>
 <div id="report"></div>
-<script src="app.js?v=20261119b"></script>
+<script src="app.js?v=20261119c"></script>
 </body>
 </html>

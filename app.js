@@ -601,7 +601,7 @@ function actFlux(i){
   let debt = Math.max(r.price - G.fp, 0), cum = 0, cumV = 0, prodCum = 0, pay = null;
   for (let n = 1; n <= XL_YEARS; n++){
     const f = Math.pow(1 - G.deg, n-1);
-    const vente = (r.sExp + r.sRue)*f, auto = r.sEnergy*f, puiss = r.sPeak, react = r.sQ*f, total = vente + auto + puiss + react;
+    const vente = (r.sExp + r.sRue)*f, auto = r.sEnergy*f, puiss = v.fipPuiss === false ? 0 : r.sPeak, react = v.fipQ === false ? 0 : r.sQ*f, total = vente + auto + puiss + react;
     cumV += total; prodCum += (v.prodAc + v.prodRue)*f;
     const debtStart = debt, interet = G.hyp*debt;
     let subv = (n === Math.round(G.subYear)) ? r.sub : 0, extra = 0;
@@ -655,8 +655,8 @@ function pageFlux(i){
    <table class="xt"><tr class="h"><td>RECETTES</td><td class="c">Prix de vente</td><td class="c">Montant</td></tr>
     <tr><td class="r">ventes annuelle d'électricité (${fN(kwhSold)} kWh/an)</td><td class="c">${xe(G.rev,'g','rev',{mul:100,d:2})} Cts/kWh</td><td class="r">${sfr(y1.vente)}</td></tr>
     <tr><td class="r">auto-consommation de ${fN(r.tauxAc*100,1)}% (${fN(y1.kwhAc)} kWh/an), calculée à</td><td class="c">${xe(v.acPrice,'v','acPrice',{mul:100,d:2})} Cts/kWh</td><td class="r">${sfr(y1.auto)}</td></tr>
-    <tr><td class="r">réduction de la puissance de pointe${r.hasBat&&r.mode===0?' (peak shaving)':''}</td><td class="c">${xe(G.puiss,'g','puiss',{d:2})} SFr./kW/mois</td><td class="r">${sfr(y1.puiss)}</td></tr>
-    <tr><td class="r">énergie réactive (franchise réduite)</td><td class="c">${xe(G.prixQ,'g','prixQ',{mul:100,d:2})} Cts/kvarh</td><td class="r">${sfr(y1.react)}</td></tr>
+    ${v.fipPuiss===false?'':`<tr><td class="r">réduction de la puissance de pointe${r.hasBat&&r.mode===0?' (peak shaving)':''}</td><td class="c">${xe(G.puiss,'g','puiss',{d:2})} SFr./kW/mois</td><td class="r">${sfr(y1.puiss)}</td></tr>`}
+    ${v.fipQ===false?'':`<tr><td class="r">énergie réactive (franchise réduite)</td><td class="c">${xe(G.prixQ,'g','prixQ',{mul:100,d:2})} Cts/kvarh</td><td class="r">${sfr(y1.react)}</td></tr>`}
     <tr class="t"><td class="nb"></td><td class="r">TOTAL</td><td class="r">${sfr(y1.total)}</td></tr></table>
    <div class="xcfh">Disponible pour rembourser la dette ou autre (CASH-FLOW)</div>
    <div class="xcf"><span>économie/vente d'électricité</span><span>${sfr(y1.total)}</span><span>dépenses totales</span><span>${sfr(depTot)}</span>
@@ -730,15 +730,16 @@ function renderAct(){
   togs('actTog', actIdx);
   renderXl();
 }
-function togs(id, i){
+function togs(id, i, lines){
   const v = V[i], el = document.getElementById(id);
-  el.innerHTML = `<label class="sw"><input type="checkbox" data-k="batOn" ${v.batOn?'checked':''}><span class="k"></span>Batterie</label>
+  el.innerHTML = (lines ? `<label class="sw" title="Ligne « réduction de la puissance de pointe » dans les recettes"><input type="checkbox" data-k="fipPuiss" ${v.fipPuiss!==false?'checked':''}><span class="k"></span>Ligne puissance de pointe</label>
+     <label class="sw" title="Ligne « énergie réactive » dans les recettes (coût dû à la franchise réduite)"><input type="checkbox" data-k="fipQ" ${v.fipQ!==false?'checked':''}><span class="k"></span>Ligne énergie réactive</label>` : '') + `<label class="sw"><input type="checkbox" data-k="batOn" ${v.batOn?'checked':''}><span class="k"></span>Batterie</label>
      <label class="sw"><input type="checkbox" data-k="psOn" ${v.psOn?'checked':''} ${v.batOn?'':'disabled'}><span class="k"></span>Peak shaving</label>`;
   el.querySelectorAll('input').forEach(inp => inp.onchange = e => { V[i][e.target.dataset.k] = e.target.checked; save(); schedule(); });
 }
 // Onglets « Fichier Vert » et « Flux Inv. propre » : mêmes feuilles que les fichiers Excel, cases modifiables
 function renderXl(){
-  ['vert','fip'].forEach(t => { segs(t + 'Sel', xlIdx, i => { xlIdx = i; renderXl(); }); togs(t + 'Tog', xlIdx); });
+  ['vert','fip'].forEach(t => { segs(t + 'Sel', xlIdx, i => { xlIdx = i; renderXl(); }); togs(t + 'Tog', xlIdx, t === 'fip'); });
   ['xgCf0','xgLq0','xgCf1','xgLq1','xgCf2','xgLq2'].forEach(id => { if (CH[id]) { CH[id].destroy(); delete CH[id]; } });
   const pv = document.getElementById('vertPages'), pf = document.getElementById('fipPages');
   pv.innerHTML = pageCost(xlIdx);
@@ -746,29 +747,33 @@ function renderXl(){
   drawXlCharts(xlIdx);
   bindXe(pv); bindXe(pf);
 }
-function reportAct(){
+function reportAct(only){
+  if (typeof only !== 'number') only = null;
   const today = new Date().toLocaleDateString('fr-CH');
-  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire · ${today} · document interne</div></div><div class="rsol"><span>SOLEOL</span><small>ENERGIE</small></div></div>
+  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire${only!==null?' · '+RES[only].v.name:''} · ${today} · document interne</div></div><div class="rsol"><span>SOLEOL</span><small>ENERGIE</small></div></div>
    <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes. Coûts : fichier de prix du 18.11.2026.</div>
-   <h2>Synthèse</h2><table>${document.getElementById('actSum').innerHTML}</table>`;
+   ${only===null?`<h2>Synthèse</h2><table>${document.getElementById('actSum').innerHTML}</table>`:''}`;
   RES.forEach((r,i) => {
+    if (only !== null && i !== only) return;
     const fl = actFlux(i);
     const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
     const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
                           .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`);
-    h += `<div class="pb"></div>${pageFlux(i)}${g}${pageCost(i)}`;
+    h += `${only===null?'<div class="pb"></div>':''}${pageFlux(i)}${g}${pageCost(i)}`;
   });
   const el = document.getElementById('report'); el.innerHTML = h.replace(/<input class="xe"[^>]*value="([^"]*)"[^>]*>/g, '$1');
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
 }
 document.getElementById('repAct').onclick = reportAct;
-document.getElementById('fipPdf').onclick = reportAct;
-document.getElementById('vertPdf').onclick = reportAct;
+document.getElementById('fipPdf').onclick = () => reportAct(xlIdx);
+document.getElementById('vertPdf').onclick = () => reportAct(xlIdx);
+document.getElementById('fipPdfAll').onclick = () => reportAct();
+document.getElementById('vertPdfAll').onclick = () => reportAct();
 document.getElementById('vertReset').onclick = () => { CO[xlIdx] = {}; saveCO(); schedule(); };
 document.getElementById('fipReset').onclick = () => {
   const d = DEF_VAR[xlIdx]; ['acKwc','rueKwc','prodAc','prodRue','batKwh','batKw','price','acPrice','subCom'].forEach(k => { V[xlIdx][k] = d[k] || 0; });
-  ['deg','fp','hyp','assur','maint','rev','puiss','prixQ'].forEach(k => { G[k] = DEF_GLOB[k]; });
+  ['deg','fp','hyp','assur','maint','rev','puiss','prixQ'].forEach(k => { G[k] = DEF_GLOB[k]; }); delete V[xlIdx].fipPuiss; delete V[xlIdx].fipQ;
   tuneCache.clear(); BASE = null; save(); renderParams(); schedule(); };
 
 bindTips(document);
