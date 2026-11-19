@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119q">
+<link rel="stylesheet" href="style.css?v=20261119r">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119q"></script>
-<script src="costs.js?v=20261119q"></script>
+<script src="data.js?v=20261119r"></script>
+<script src="costs.js?v=20261119r"></script>
 </head>
 <body>
 <header class="top">
@@ -106,7 +106,8 @@
 
   <h2 class="sech">Configurateur : puissance, répartition RU / RUE et batterie</h2>
   <div class="box">
-    <div class="row" style="gap:10px"><span class="cap" style="margin:0 0 12px">Partir de :</span><div class="seg" id="cfPreset"><button data-i="0">V1</button><button data-i="1">V2</button><button data-i="2">V3</button></div><span class="cap" id="cfStatus" style="margin:0 0 12px"></span></div>
+    <div class="row" style="gap:10px"><button class="btn sm" id="cfOpt" title="Cherche la puissance, la répartition RU / RUE et la taille de batterie qui donnent le plus de liquidités sur la durée choisie, puis place les curseurs dessus.">Trouver la configuration optimale</button><span class="cap" id="cfOptSt" style="margin:0 0 12px"></span><span class="cap" style="margin:0 0 12px">ou partir de :</span><div class="seg" id="cfPreset"><button data-i="0">V1</button><button data-i="1">V2</button><button data-i="2">V3</button></div><span class="cap" id="cfStatus" style="margin:0 0 12px"></span></div>
+    <div class="best" id="cfOptTxt" style="font-weight:400;color:var(--ink);margin:0 0 12px"></div>
     <div class="sliders">
       <label><span>Puissance totale <i class="tip" data-tip="Puissance de toute l'installation. La toiture du photomontage permet 4'200,8 kWc (8'573 modules).">i</i></span><input type="range" id="cf_kwc" min="500" max="4250" step="50"><b id="cfKwcV"></b></label>
       <label><span>Répartition <i class="tip" data-tip="Part en autoconsommation (rétribution unique RU, alimente l'usine et la batterie) ; le reste est une installation séparée en injection totale (RUE), entièrement revendue.">i</i></span><input type="range" id="cf_ac" min="0" max="100" step="5"><b id="cfAcV"></b></label>
@@ -190,6 +191,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261119q"></script>
+<script src="app.js?v=20261119r"></script>
 </body>
 </html>

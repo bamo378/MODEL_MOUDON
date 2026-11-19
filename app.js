@@ -176,7 +176,7 @@ function compute(v){
   const batPart = hasBat ? (sum(r0.peak) - sum(r.peak))*G.puiss + (sum(r0.imp)-imp)*v.acPrice + (r.exp-r0.exp)*G.rev
                    - (qV - Q_KVARH.reduce((s,q,k)=>s+Math.max(q-0.5*r0.imp[k],0),0))*G.prixQ : 0;
   const price = v.price - (v.batOn ? 0 : v.batReduc);
-  const sub = ruAmount(v.acKwc) + (v.rueKwc > 0 ? (G.rueOn ? G.rueRate*v.rueKwc : ruAmount(v.rueKwc)) : 0) + (v.subCom || 0);
+  const sub = ruAmount(v.acKwc) + (v.rueKwc > 0 ? ((G.rueOn && v.rueKwc >= 150) ? G.rueRate*v.rueKwc : ruAmount(v.rueKwc)) : 0) + (v.subCom || 0);
   const dep = (G.assur + G.maint)*price;
   // Flux annuels, logique des fichiers de flux Soleol
   const H = Math.max(1, Math.round(G.horizon));
@@ -638,7 +638,7 @@ function renderBS(force){
   const key = bsKey();
   if (bsData && bsData.key === key){ drawBS(); return; }
   if (!force && !document.getElementById('tab-bat').classList.contains('active')) return;
-  if (!bsData || bsData.key !== key) renderCF();
+  if (!bsData || bsData.key !== key){ if (!cfOptDone) cfOptimize(); else renderCF(); }
   const run = ++bsRun, sizes = bsSizes(), jobs = [];
   V.forEach((v,i) => sizes.forEach(k => jobs.push([i,k])));
   const res = V.map(() => []);
@@ -781,6 +781,49 @@ document.querySelectorAll('#cfPreset button').forEach(b => b.onclick = () => { c
   const tot = v.acKwc + v.rueKwc;
   CF.kwc = Math.round(tot); CF.ac = Math.round(v.acKwc/tot*100); CF.bat = v.batOn ? v.batKwh : 0; CF.kwOv = v.batOn ? v.batKw : null; CF.fix = bsFixed(v); CF.base = i;
   CF.yAc = Math.round(v.prodAc/v.acKwc); if (v.rueKwc > 0) CF.yRue = Math.round(v.prodRue/v.rueKwc); CF.pKwc = Math.round((v.price - v.batReduc)/tot); renderCF(); });
+
+
+// Recherche de la configuration la plus rentable (liquidités à la fin de la durée choisie)
+let cfOptDone = false, cfOptRun = 0, cfBest = null;
+function cfOptimize(){
+  const run = ++cfOptRun, st = document.getElementById('cfOptSt'), btn = document.getElementById('cfOpt');
+  btn.disabled = true; st.textContent = 'Recherche…';
+  const H = Math.max(1, Math.round(G.horizon)), memo = new Map();
+  const val = o => { const k = [o.kwc, o.ac, o.bat].join('|'); if (!memo.has(k)) memo.set(k, compute(cfVariant(Object.assign({}, CF, o, {kwOv:null}))).rows[H-1].cum); return memo.get(k); };
+  const KW = []; for (let k = 1000; k <= 4200; k += 400) KW.push(k); KW.push(4201);
+  const AC = [0,10,20,30,40,50,60,70,80,90,100], BAT = []; for (let b = 0; b <= 1500; b += 100) BAT.push(b);
+  let cur = {kwc: CF.kwc, ac: Math.round(CF.ac/10)*10, bat: Math.round(CF.bat/100)*100};
+  const plan = [];
+  for (let pass = 0; pass < 2; pass++){ plan.push(['ac', AC], ['bat', BAT], ['kwc', KW]); }
+  plan.push(['ac', null], ['bat', null]); // affinage au pas de 5 % et 50 kWh autour du meilleur
+  let pi = 0, list = null, li = 0, bestV = -Infinity, bestO = null, total = plan.length;
+  const step = () => {
+    if (run !== cfOptRun) return;
+    const t0 = performance.now();
+    while (pi < plan.length && performance.now() - t0 < 100){
+      if (!list){
+        const [k, arr] = plan[pi];
+        list = arr ? arr.slice() : (k === 'ac' ? [cur.ac-5, cur.ac, cur.ac+5].filter(x=>x>=0&&x<=100) : [cur.bat-50, cur.bat, cur.bat+50].filter(x=>x>=0&&x<=1500));
+        li = 0; bestV = -Infinity; bestO = null;
+      }
+      const k = plan[pi][0], o = Object.assign({}, cur, {[k]: list[li++]}), x = val(o);
+      if (x > bestV){ bestV = x; bestO = o; }
+      if (li >= list.length){ cur = bestO; list = null; pi++; }
+    }
+    st.textContent = pi < plan.length ? `Recherche ${Math.round(pi/total*100)} % (${memo.size} configurations testées)…` : '';
+    if (pi < plan.length){ setTimeout(step, 0); return; }
+    const ref = RES.map(r => r.rows[H-1].cum), bi = ref.indexOf(Math.max(...ref));
+    cfBest = Object.assign({}, cur, {cum: val(cur), n: memo.size});
+    Object.assign(CF, {kwc: cur.kwc, ac: cur.ac, bat: cur.bat, kwOv: null});
+    btn.disabled = false; cfOptDone = true;
+    const acK = cur.kwc*cur.ac/100;
+    document.getElementById('cfOptTxt').innerHTML = `<b>Configuration la plus rentable trouvée</b> (${memo.size} configurations testées, scénario ${scen().t}) : <b>${fN(cur.kwc)} kWc</b>, dont <b>${fN(acK)} kWc en autoconsommation</b> (${cur.ac} %) et <b>${fN(cur.kwc-acK)} kWc en injection totale</b>, ${cur.bat ? `batterie <b>${fN(cur.bat)} kWh / ${fN(cur.bat*BS.ratio)} kW</b>` : '<b>sans batterie</b>'} → <b>${fCHF(cfBest.cum)} CHF</b> de liquidités à ${H} ans, soit ${cfBest.cum-ref[bi]>=0?'+':''}${fCHF(cfBest.cum-ref[bi])} CHF par rapport à la meilleure variante actuelle (${RES[bi].v.name.split(' · ')[0]}).
+      <br><span class="cap">Les curseurs sont placés sur cette configuration : déplacez-les pour voir ce que coûte chaque écart. Critère : liquidités cumulées à ${H} ans (durée réglable dans Paramètres). ${G.rueOn ? `Hypothèse forte : RUE de ${fN(G.rueRate)} CHF/kWc obtenue à l'enchère ; désactivez la RUE dans Paramètres pour voir l'optimum sans elle.` : 'RUE désactivée : l\'injection totale ne reçoit que la RU ordinaire.'} Production par kWc et prix par kWc : valeurs des champs ci-dessous.</span>`;
+    renderCF();
+  };
+  setTimeout(step, 0);
+}
+document.getElementById('cfOpt').onclick = () => cfOptimize();
 
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
