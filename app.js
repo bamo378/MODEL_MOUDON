@@ -181,7 +181,9 @@ function compute(v){
   const net = price - sub;
   const simple = net / ((sEnergy + sExp + sQ + sRue + sPeak) - dep);
   return {v, hasBat, mode, T, R, r, price, sub, net, dep, sEnergy, sPeak, sQ, sExp, sRue, batPart,
-    year1: sEnergy + sPeak + sQ + sExp + sRue, autoconso: v.prodAc - r.exp, surplus: r.exp, rueProd: v.prodRue,
+    year1: sEnergy + sPeak + sQ + sExp + sRue, autoconso: v.prodAc - r.exp,
+    tauxAc: v.prodAc > 0 ? (v.prodAc - r.exp)/v.prodAc : 0, tauxAc0: v.prodAc > 0 ? (v.prodAc - r0.exp)/v.prodAc : 0,
+    couverture: (v.prodAc - r.exp)/(sum(BASE.imp)), tauxTot: (v.prodAc + v.prodRue) > 0 ? (v.prodAc - r.exp)/(v.prodAc + v.prodRue) : 0, surplus: r.exp, rueProd: v.prodRue,
     peakAvg: sum(r.peak)/12, peakMonths: Array.from(r.peak), impMonths: Array.from(r.imp), rows, npv, cum, payback, simple, cycles: cap ? r.dis/cap : 0};
 }
 
@@ -223,6 +225,8 @@ function renderCards(){
        <div class="kpi"><b>${fY(r.payback)}</b><span>Entièrement payé après</span></div>
        <div class="kpi"><b>${fCHF(r.year1)}</b><span>Gain 1re année (CHF)</span></div>
        <div class="kpi"><b>${fM(r.npv)}</b><span>Gain net actualisé (CHF)</span></div>
+       <div class="kpi"><b>${fN(r.tauxAc*100,1)} %</b><span>Taux d'autoconsommation <i class="tip" data-tip="Part de la production de l'installation en autoconsommation utilisée par l'usine (directement ou via la batterie). Le reste est revendu. Calculé au quart d'heure sur la consommation réelle.">i</i></span></div>
+       <div class="kpi"><b>${fN(r.couverture*100,1)} %</b><span>Consommation couverte <i class="tip" data-tip="Part de la consommation annuelle de l'usine couverte par le solaire (directement ou via la batterie).">i</i></span></div>
        <div class="kpi"><b>${fN(r.peakAvg)} kW</b><span>Pointe moyenne / mois</span></div>
        <div class="kpi"><b>${fM(r.cum)}</b><span>Liquidités à ${Math.round(G.horizon)} ans (CHF)</span></div>
      </div>
@@ -256,7 +260,9 @@ function renderComp(){
     ['dont apport de la batterie (CHF/an)', r=>r.hasBat?fCHF(r.batPart):'–'], ['Assurance + maintenance (CHF/an)', r=>fCHF(r.dep)],
     ['Retour simple (ans)', r=>fN(r.simple,1)], ['Entièrement payé après', r=>fY(r.payback), 1],
     [`Liquidités cumulées à ${H} ans (CHF)`, r=>fCHF(r.cum)], ['Gain net actualisé (CHF)', r=>fCHF(r.npv), 1],
-    ['Autoconsommé (MWh/an)', r=>fN(r.autoconso/1000)], ['Surplus revendu (MWh/an)', r=>fN(r.surplus/1000)], ['Injection totale (MWh/an)', r=>fN(r.rueProd/1000)],
+    ['Production de la partie autoconsommation (MWh/an)', r=>fN(r.v.prodAc/1000)], ['Autoconsommé (MWh/an)', r=>fN(r.autoconso/1000)],
+    ['Taux d\'autoconsommation, avec batterie', r=>fN(r.tauxAc*100,1)+' %', 1], ['Taux d\'autoconsommation, sans batterie', r=>fN(r.tauxAc0*100,1)+' %'],
+    ['Taux d\'autoconsommation sur toute la production (RUE comprise)', r=>fN(r.tauxTot*100,1)+' %'], ['Consommation de l\'usine couverte par le solaire', r=>fN(r.couverture*100,1)+' %', 1], ['Surplus revendu (MWh/an)', r=>fN(r.surplus/1000)], ['Injection totale (MWh/an)', r=>fN(r.rueProd/1000)],
     ['Pointe moyenne (kW)', r=>fN(r.peakAvg)], ['Cycles de batterie par an', r=>r.hasBat?fN(r.cycles):'–']];
   document.getElementById('tblComp').innerHTML = '<thead><tr><th></th>' + RES.map((r,i)=>`<th style="color:${COLORS[i]}">${r.v.name}</th>`).join('') + '</tr></thead><tbody>' +
     L.map(([l,f,h]) => `<tr class="${h?'hl':''}"><td>${l}</td>${RES.map(r=>`<td>${f(r)}</td>`).join('')}</tr>`).join('') + '</tbody>';
@@ -277,7 +283,7 @@ function renderFlux(){
   chart('chLiq', {type:'bar', data:{labels:lab, datasets:[{label:'Liquidités cumulées', data:r.rows.map(x=>x.cum), backgroundColor:c, borderRadius:3}]},
     options:{plugins:{legend:{display:false}, tooltip:tipCHF}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}});
   const surf = (r.v.acKwc + r.v.rueKwc)*1000/490*2.0412;
-  document.getElementById('liqTxt').textContent = `${r.rows.length} ans : ${fCHF(r.cum)} CHF, soit ${fN(r.cum/surf,1)} CHF/m² de panneaux. Investissement entièrement payé après ${fY(r.payback)}.`;
+  document.getElementById('liqTxt').textContent = `Taux d'autoconsommation : ${fN(r.tauxAc*100,1)} % · consommation couverte : ${fN(r.couverture*100,1)} %. ${r.rows.length} ans : ${fCHF(r.cum)} CHF, soit ${fN(r.cum/surf,1)} CHF/m² de panneaux. Investissement entièrement payé après ${fY(r.payback)}.`;
   document.getElementById('tblFlux').innerHTML = '<thead><tr><th>Année</th><th>Production (kWh)</th><th>Recettes et économies</th><th>Assurance + maintenance</th><th>Intérêts</th><th>Subvention</th><th>Remboursement</th><th>Dette restante</th><th>Cash-flow</th><th>Liquidités cumulées</th></tr></thead><tbody>' +
     r.rows.map(x=>`<tr><td>${x.n}</td><td>${fN(x.prod)}</td><td>${fCHF(x.recettes)}</td><td>${fCHF(x.dep)}</td><td>${fCHF(x.interet)}</td><td>${x.subv?fCHF(x.subv):''}</td><td>${fCHF(x.remb)}</td><td>${fCHF(x.debt)}</td><td>${fCHF(x.cf)}</td><td>${fCHF(x.cum)}</td></tr>`).join('') + '</tbody>';
 }
@@ -393,6 +399,7 @@ function renderPS(){
     options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
   const hb = (id, parts, total) => chart(id, {type:'bar', data:{labels:[''], datasets: parts.map(p=>({label:`${p[0]} : ${fN(p[1]/1000,1)} MWh (${total?fN(p[1]/total*100):0} %)`, data:[p[1]/1000], backgroundColor:p[2]}))},
     options:{indexAxis:'y', animation:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label}}}, scales:{x:{stacked:true, ...gridY, title:{display:true,text:'MWh'}}, y:{stacked:true, grid:{display:false}}}}});
+  document.getElementById('psRate').textContent = `Taux d'autoconsommation sur la période : ${E.pv ? fN((E.pv - E.pvSold)/E.pv*100,1) : 0} % · consommation couverte par le solaire : ${E.load ? fN((E.direct + E.pvBat*G.eta*G.eta)/E.load*100,1) : 0} %.`;
   hb('psUse', [['Utilisée directement', E.direct, '#2a78d6'], ['Stockée dans la batterie', E.pvBat, '#1baf7a'], ['Revendue', E.pvSold, '#eda100']], E.pv);
   hb('psSrc', [['Solaire direct', E.direct, '#eda100'], ['Batterie (pointes)', E.batPeak, '#c0392b'], ['Batterie (autoconso)', E.batAc, '#1baf7a'], ['Réseau', E.load - E.direct - E.batPeak - E.batAc, '#8c8b86']], E.load);
 }

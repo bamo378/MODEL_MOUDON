@@ -67,7 +67,7 @@
   <div class="box"><h3>Charge et décharge de la batterie <i class="tip" data-tip="Au-dessus de zéro : la batterie se charge (vert : avec le surplus solaire, gris : sur le réseau, sans créer de pointe). Sous zéro : elle se décharge (rouge : pour écrêter une pointe, bleu : pour couvrir la consommation avec l'énergie stockée).">i</i></h3><canvas id="psBat" height="70"></canvas><p class="cap">Vert : charge solaire · gris : charge réseau · rouge : décharge peak shaving · bleu : décharge autoconsommation.</p></div>
   <div class="box"><h3>État de charge <i class="tip" data-tip="Énergie contenue dans la batterie. En semaine, la réserve est gardée pour les pointes ; le week-end, elle est libérée pour stocker le surplus.">i</i></h3><canvas id="psSoc" height="45"></canvas></div>
   <div class="grid2">
-    <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas></div>
+    <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas><p class="cap" id="psRate"></p></div>
     <div class="box"><h3>D'où vient l'énergie consommée <i class="tip" data-tip="Consommation de l'usine sur la période : couverte directement par le solaire, par la batterie, ou par le réseau.">i</i></h3><canvas id="psSrc" height="130"></canvas></div>
   </div>
 </section>
