@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119g">
+<link rel="stylesheet" href="style.css?v=20261119h">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119g"></script>
-<script src="costs.js?v=20261119g"></script>
+<script src="data.js?v=20261119h"></script>
+<script src="costs.js?v=20261119h"></script>
 </head>
 <body>
 <header class="top">
@@ -71,7 +71,7 @@
   <div class="kpirow" id="psKpi"></div>
   <div class="box"><h3>Pourquoi la batterie est réglée ainsi <i class="tip" data-tip="Texte recalculé pour la variante choisie, selon les boutons Batterie / Peak shaving et les réglages de l'onglet Paramètres.">i</i></h3><div id="psWhy" class="why-txt"></div></div>
   <div class="box"><h3>Consommation, production et soutirage réseau <i class="tip" data-tip="Gris : consommation de l'usine. Rouge pointillé : consommation moins production, c'est-à-dire ce qui serait soutiré sans batterie. Bleu : ce qui est réellement soutiré au réseau. Noir pointillé : seuil de pointe visé par la batterie (il remonte si une pointe plus haute passe dans le mois).">i</i></h3><canvas id="psMain" height="95"></canvas><p class="cap">L'écart entre la courbe rouge et la courbe bleue au-dessus du seuil, c'est la pointe écrêtée par la batterie.</p></div>
-  <div class="box"><h3>Charge et décharge de la batterie <i class="tip" data-tip="Au-dessus de zéro : la batterie se charge (vert : avec le surplus solaire, gris : sur le réseau, sans créer de pointe). Sous zéro : elle se décharge (rouge : pour écrêter une pointe, bleu : pour couvrir la consommation avec l'énergie stockée).">i</i></h3><canvas id="psBat" height="70"></canvas><p class="cap">Vert : charge solaire · gris : charge réseau · rouge : décharge peak shaving · bleu : décharge autoconsommation.</p></div>
+  <div class="box"><h3>Charge et décharge de la batterie <i class="tip" data-tip="Au-dessus de zéro : la batterie se charge (vert : avec le surplus solaire, gris : sur le réseau, seulement si cette option est activée dans Paramètres). Sous zéro : elle se décharge (rouge : pour écrêter une pointe, bleu : pour couvrir la consommation avec l'énergie stockée).">i</i></h3><canvas id="psBat" height="70"></canvas><p class="cap">Vert : charge solaire · gris : charge réseau (désactivée par défaut) · rouge : décharge peak shaving · bleu : décharge autoconsommation.</p></div>
   <div class="box"><h3>État de charge <i class="tip" data-tip="Énergie contenue dans la batterie. Ligne rouge : réserve gardée en semaine pour les pointes (une valeur en hiver, une en été). Au-dessus, la batterie couvre la consommation de l'usine. Le week-end, la réserve est libérée.">i</i></h3><canvas id="psSoc" height="45"></canvas></div>
   <div class="grid2">
     <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas><p class="cap" id="psRate"></p></div>
@@ -143,6 +143,6 @@
 </main>
 <div id="tipbox"></div>
 <div id="report"></div>
-<script src="app.js?v=20261119g"></script>
+<script src="app.js?v=20261119h"></script>
 </body>
 </html>
