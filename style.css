@@ -1,0 +1,57 @@
+:root{--bg:#f6f6f3;--card:#fff;--ink:#1a1a19;--mut:#5d5c58;--line:#e3e2dc;--acc:#1c3d5a;--v1:#2a78d6;--v2:#eb6834;--v3:#1baf7a;--good:#14663f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Helvetica Neue",Arial,sans-serif}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:18px}
+.logo-model{height:42px}
+.titles h1{margin:0;font-size:18px}
+.titles p{margin:2px 0 0;color:var(--mut);font-size:12.5px}
+.soleol{display:flex;flex-direction:column;align-items:flex-end;line-height:1}
+.soleol span{font-size:26px;letter-spacing:4px;font-weight:300}
+.soleol small{font-size:10px;letter-spacing:5px;color:var(--mut)}
+.soleol img{height:40px}
+.tabs{display:flex;gap:4px;padding:10px 24px 0;background:#fff;border-bottom:1px solid var(--line);align-items:flex-end}
+.tab{border:0;background:none;padding:9px 14px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:var(--ink);border-color:var(--acc);font-weight:600}
+.status{margin-left:auto;color:var(--mut);font-size:12px;padding-bottom:8px}
+main{padding:18px 24px;max-width:1500px;margin:auto}
+.panel{display:none}.panel.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;border-top:4px solid var(--c)}
+.card h2{margin:0 0 2px;font-size:16px}
+.card .sub{color:var(--mut);font-size:12px;margin-bottom:10px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px}
+.kpi b{display:block;font-size:17px}
+.kpi span{color:var(--mut);font-size:11.5px}
+.toggles{display:flex;gap:14px;flex-wrap:wrap}
+.sw{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;user-select:none}
+.sw input{display:none}
+.sw .k{width:34px;height:19px;border-radius:10px;background:#cfcdc6;position:relative;transition:.15s}
+.sw .k:after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+.k{background:var(--good)}
+.sw input:checked+.k:after{left:17px}
+.sw input:disabled+.k{opacity:.4}
+.best{margin:14px 0;padding:10px 14px;background:#e6f3ec;border-radius:8px;color:var(--good);font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.box h3{margin:0 0 10px;font-size:14px}
+.cap{color:var(--mut);font-size:12px;margin:8px 0 0}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{background:#f0efea;font-weight:600}
+tr.hl td{font-weight:700}
+.ptable td input[type=number]{width:120px;padding:4px 6px;border:1px solid #c9c8c1;border-radius:5px;font:inherit;text-align:right;background:#fffbe6}
+.ptable td.sec{background:#eef2f6;font-weight:600;color:var(--acc)}
+.tip{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#e3e2dc;color:var(--mut);font:italic 600 10px Georgia,serif;cursor:help;margin-left:4px;vertical-align:1px}
+#tipbox{position:fixed;z-index:9;max-width:300px;background:#1a1a19;color:#fff;font-size:12px;line-height:1.4;padding:8px 10px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .12s}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;margin-bottom:12px}
+.seg button{border:0;background:none;padding:7px 14px;font:inherit;cursor:pointer;color:var(--mut)}
+.seg button.on{background:var(--acc);color:#fff}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.inl{color:var(--mut);margin-bottom:12px}
+.inl input{font:inherit;padding:4px 6px}
+.btn{border:1px solid var(--acc);background:#fff;color:var(--acc);padding:7px 14px;border-radius:6px;cursor:pointer;font:inherit}
+.neg{color:#b3261e}
+@media (max-width:900px){.cards,.grid2{grid-template-columns:1fr}main{padding:12px 16px}.top{padding:12px 16px}}
