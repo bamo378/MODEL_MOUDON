@@ -209,7 +209,7 @@ function compute(v){
 
 /* ---------------- Formatage ---------------- */
 const fCHF = x => (x < 0 ? '−' : '') + Math.round(Math.abs(x)).toLocaleString('fr-CH').replace(/ |\s/g, "'") ;
-const fN = (x,d=0) => (x < 0 ? '−' : '') + Math.abs(x).toLocaleString('fr-CH',{minimumFractionDigits:d,maximumFractionDigits:d}).replace(/ |\s/g, "'");
+const fN = (x,d=0) => (x < 0 && Math.abs(x) >= 0.5*Math.pow(10,-d) ? '−' : '') + Math.abs(x).toLocaleString('fr-CH',{minimumFractionDigits:d,maximumFractionDigits:d}).replace(/ |\s/g, "'");
 const fM = x => fN(x/1e6, 2) + ' M';
 const fY = x => x === null || !isFinite(x) ? '> durée' : fN(x,1) + ' ans';
 
