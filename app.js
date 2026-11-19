@@ -794,7 +794,8 @@ function cfOptimize(){
   const AC = [0,10,20,30,40,50,60,70,80,90,100], BAT = []; for (let b = 0; b <= 1500; b += 100) BAT.push(b);
   let cur = {kwc: CF.kwc, ac: Math.round(CF.ac/10)*10, bat: Math.round(CF.bat/100)*100};
   const plan = [];
-  for (let pass = 0; pass < 2; pass++){ plan.push(['ac', AC], ['bat', BAT], ['kwc', KW]); }
+  const keepKw = document.getElementById('cf_keep').checked;
+  for (let pass = 0; pass < 2; pass++){ plan.push(['ac', AC], ['bat', BAT]); if (!keepKw) plan.push(['kwc', KW]); }
   plan.push(['ac', null], ['bat', null]); // affinage au pas de 5 % et 50 kWh autour du meilleur
   let pi = 0, list = null, li = 0, bestV = -Infinity, bestO = null, total = plan.length;
   const step = () => {
@@ -817,7 +818,7 @@ function cfOptimize(){
     Object.assign(CF, {kwc: cur.kwc, ac: cur.ac, bat: cur.bat, kwOv: null});
     btn.disabled = false; cfOptDone = true;
     const acK = cur.kwc*cur.ac/100;
-    document.getElementById('cfOptTxt').innerHTML = `<b>Configuration la plus rentable trouvée</b> (${memo.size} configurations testées, scénario ${scen().t}) : <b>${fN(cur.kwc)} kWc</b>, dont <b>${fN(acK)} kWc en autoconsommation</b> (${cur.ac} %) et <b>${fN(cur.kwc-acK)} kWc en injection totale</b>, ${cur.bat ? `batterie <b>${fN(cur.bat)} kWh / ${fN(cur.bat*BS.ratio)} kW</b>` : '<b>sans batterie</b>'} → <b>${fCHF(cfBest.cum)} CHF</b> de liquidités à ${H} ans, soit ${cfBest.cum-ref[bi]>=0?'+':''}${fCHF(cfBest.cum-ref[bi])} CHF par rapport à la meilleure variante actuelle (${RES[bi].v.name.split(' · ')[0]}).
+    document.getElementById('cfOptTxt').innerHTML = `<b>Configuration la plus rentable trouvée${keepKw ? ` pour ${fN(cur.kwc)} kWc` : ''}</b> (${memo.size} configurations testées, scénario ${scen().t}) : <b>${fN(cur.kwc)} kWc</b>, dont <b>${fN(acK)} kWc en autoconsommation</b> (${cur.ac} %) et <b>${fN(cur.kwc-acK)} kWc en injection totale</b>, ${cur.bat ? `batterie <b>${fN(cur.bat)} kWh / ${fN(cur.bat*BS.ratio)} kW</b>` : '<b>sans batterie</b>'} → <b>${fCHF(cfBest.cum)} CHF</b> de liquidités à ${H} ans, soit ${cfBest.cum-ref[bi]>=0?'+':''}${fCHF(cfBest.cum-ref[bi])} CHF par rapport à la meilleure variante actuelle (${RES[bi].v.name.split(' · ')[0]}).
       <br><span class="cap">Les curseurs sont placés sur cette configuration : déplacez-les pour voir ce que coûte chaque écart. Critère : liquidités cumulées à ${H} ans (durée réglable dans Paramètres). ${G.rueOn ? `Hypothèse forte : RUE de ${fN(G.rueRate)} CHF/kWc obtenue à l'enchère ; désactivez la RUE dans Paramètres pour voir l'optimum sans elle.` : 'RUE désactivée : l\'injection totale ne reçoit que la RU ordinaire.'} Production par kWc et prix par kWc : valeurs des champs ci-dessous.</span>`;
     renderCF();
   };
