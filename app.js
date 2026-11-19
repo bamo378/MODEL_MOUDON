@@ -350,14 +350,15 @@ function renderDetail(){
     i0 = S.m.indexOf(ms[0]); i1 = i0; while (i1 < S.n && ms.includes(S.m[i1])) i1++;
     agg = {month:4, quarter:8, half:16}[detPer]; perTxt = o[0];
   }
-  const lab = [], ld = [], pv = [], gr = [], so = [], dayStart = [];
+  const lab = [], ld = [], pv = [], gr = [], so = [], pk = [], dayStart = [];
   const days = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
   let E = {load:0, pv:0, imp:0, exp:0, maxImp:0, maxLoad:0};
   for (let i = i0; i < i1; i += agg){
     const d = new Date(S.t0 + i*900000);
     let a = 0, b = 0, c = 0, s = 0, k = 0;
-    for (let j = i; j < Math.min(i + agg, i1); j++, k++){ a += S.load[j]; b += v.prodAc*S.pv[j]; c += r.r.grid[j]; s += r.r.soc[j]; }
-    ld.push(a/k); pv.push(b/k); gr.push(c/k); so.push(s/k);
+    let hit = false;
+    for (let j = i; j < Math.min(i + agg, i1); j++, k++){ a += S.load[j]; b += v.prodAc*S.pv[j]; c += r.r.grid[j]; s += r.r.soc[j]; if (r.r.kind && r.r.kind[j] === 3) hit = true; }
+    ld.push(a/k); pv.push(b/k); gr.push(c/k); so.push(s/k); pk.push(hit ? s/k : null);
     const hh = String(d.getUTCHours()).padStart(2,'0') + ':' + String(d.getUTCMinutes()).padStart(2,'0');
     lab.push(`${days[d.getUTCDay()]} ${d.getUTCDate()}.${d.getUTCMonth()+1} ${hh}`);
     dayStart.push(detPer === 'week' ? (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) : detPer === 'month' ? (d.getUTCHours() === 0 && (d.getUTCDate()-1) % 3 === 0) : (d.getUTCDate() === 1 && d.getUTCHours() < agg/4));
@@ -379,8 +380,9 @@ function renderDetail(){
       {label:'Production PV (autoconso)', data:pv, borderColor:'#eda100', borderWidth:lw+0.3, pointRadius:0},
       {label:'Réseau (+ soutiré / − revendu)', data:gr, borderColor:COLORS[detIdx], borderWidth:lw, pointRadius:0}]},
     options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fN(c.parsed.y)} kW`}}}, scales:{x:xax, y:{...gridY, title:{display:true,text:'kW'}}}}});
-  chart('chSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:lw, pointRadius:0}]},
-    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
+  chart('chSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:lw, pointRadius:0},
+      {label:'La batterie coupe une pointe', data:pk, showLine:false, pointStyle:'rect', pointRadius:agg>4?3:4, backgroundColor:'#c0392b', borderColor:'#c0392b'}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true, position:"bottom"}, tooltip:{filter:c=>c.parsed.y!=null, callbacks:{label:c=>c.datasetIndex===1 ? "Peak shaving" : `${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
   document.getElementById('tblMonth').innerHTML = '<thead><tr><th>Mois</th><th>Pointe sans PV (kW)</th>' + RES.map((x,i)=>`<th style="color:${COLORS[i]}">Pointe ${x.v.name.split(' · ')[0]} (kW)</th>`).join('') + RES.map((x,i)=>`<th style="color:${COLORS[i]}">Soutirage ${x.v.name.split(' · ')[0]} (MWh)</th>`).join('') + '</tr></thead><tbody>' +
     MONTHS.map((m,k)=>`<tr><td>${m}</td><td>${fN(BASE.peak[k])}</td>${RES.map(x=>`<td>${fN(x.peakMonths[k])}</td>`).join('')}${RES.map(x=>`<td>${fN(x.impMonths[k]/1000)}</td>`).join('')}</tr>`).join('') + '</tbody>';
 }
@@ -471,8 +473,9 @@ function renderPS(){
       {label:'Décharge autoconsommation', data:dA, backgroundColor:'#2a78d6', stack:'s'}]},
     options:{animation:false, barPercentage:1, categoryPercentage:1, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{filter:c=>c.parsed.y!==0, callbacks:{label:c=>`${c.dataset.label}: ${fN(Math.abs(c.parsed.y))} kW`}}}, scales:{x:{...xax, stacked:true}, y:{...gridY, stacked:true, title:{display:true,text:'kW'}}}}});
   chart('psSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:1.5, pointRadius:0},
-      {label:'Réserve gardée pour les pointes', data:rsv, borderColor:'#c0392b', borderDash:[5,3], borderWidth:1.3, pointRadius:0, fill:false, stepped:true}]},
-    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true, position:'bottom'}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
+      {label:'Réserve gardée pour les pointes', data:rsv, borderColor:'#c0392b', borderDash:[5,3], borderWidth:1.3, pointRadius:0, fill:false, stepped:true},
+      {label:'La batterie coupe une pointe', data:so.map((x,k)=> dP[k] < 0 ? x : null), showLine:false, pointStyle:'rect', pointRadius:4, pointHoverRadius:6, backgroundColor:'#c0392b', borderColor:'#c0392b'}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true, position:'bottom'}, tooltip:{filter:c=>c.parsed.y!=null, callbacks:{label:c=>c.datasetIndex===2 ? `Peak shaving : ${fN(-dP[c.dataIndex])} kW` : `${c.dataset.label} : ${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
   const hb = (id, parts, total) => chart(id, {type:'bar', data:{labels:[''], datasets: parts.map(p=>({label:`${p[0]} : ${fN(p[1]/1000,1)} MWh (${total?fN(p[1]/total*100):0} %)`, data:[p[1]/1000], backgroundColor:p[2]}))},
     options:{indexAxis:'y', animation:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label}}}, scales:{x:{stacked:true, ...gridY, title:{display:true,text:'MWh'}}, y:{stacked:true, grid:{display:false}}}}});
   document.getElementById('psRate').textContent = `Taux d'autoconsommation sur la période : ${E.pv ? fN((E.pv - E.pvSold)/E.pv*100,1) : 0} % · consommation couverte par le solaire : ${E.load ? fN((E.direct + E.pvBat*G.eta*G.eta)/E.load*100,1) : 0} %.`;
