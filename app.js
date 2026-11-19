@@ -541,7 +541,8 @@ document.getElementById('repExpert').onclick = () => report(true);
 
 
 /* ---------------- Actionnaire : fichiers de coûts et flux d'investissement propre ---------------- */
-let actIdx = 0;
+let actIdx = 0, actView = 'all';
+const XL_YEARS = 30;
 // Coûts de la batterie retirés du prix de revient quand la batterie est désactivée (fichier vert)
 function batCostLines(i){ return i === 2 ? {51:'all', 48:20000} : {51:'all'}; }
 function costSheet(i){
@@ -555,121 +556,158 @@ function costSheet(i){
   const marge = r.price - total;
   return {C, lines, total, marge, pct: r.price ? marge/r.price : 0, margeCum: C.margeCum + (marge - C.marge)};
 }
+// Flux sur 30 ans, même logique que la feuille « Calculs » des fichiers de flux
 function actFlux(i){
-  const r = RES[i], v = r.v, H = r.rows.length, out = [];
+  const r = RES[i], v = r.v, out = [];
   const kwhAc = v.acPrice ? r.sEnergy / v.acPrice : 0;
-  let debt = Math.max(r.price - G.fp, 0), cumV = 0;
-  for (let n = 1; n <= H; n++){
-    const f = Math.pow(1 - G.deg, n-1), row = r.rows[n-1];
-    const vente = (r.sExp + r.sRue)*f, auto = r.sEnergy*f, puiss = r.sPeak + r.sQ*f, total = vente + auto + puiss;
-    cumV += total;
-    const interet = G.hyp*debt;
+  let debt = Math.max(r.price - G.fp, 0), cum = 0, cumV = 0, prodCum = 0, pay = null;
+  for (let n = 1; n <= XL_YEARS; n++){
+    const f = Math.pow(1 - G.deg, n-1);
+    const vente = (r.sExp + r.sRue)*f, auto = r.sEnergy*f, puiss = r.sPeak, react = r.sQ*f, total = vente + auto + puiss + react;
+    cumV += total; prodCum += (v.prodAc + v.prodRue)*f;
+    const debtStart = debt, interet = G.hyp*debt;
     let subv = (n === Math.round(G.subYear)) ? r.sub : 0, extra = 0;
-    if (subv){ const s = Math.min(subv, debt); debt -= s; extra = subv - s; }
+    if (subv){ const sx = Math.min(subv, debt); debt -= sx; extra = subv - sx; }
     const avail = total - r.dep - interet;
     const remb = Math.max(Math.min(debt, avail), 0); debt -= remb;
-    out.push({n, kwc:(v.acKwc+v.rueKwc)*f, prod:(v.prodAc+v.prodRue)*f, kwhAc:kwhAc*f, remb, subv, debt, interet, vente, auto, puiss, total, cumV,
-              dep: r.dep + interet + remb, cf: row.cf, cum: row.cum});
+    const cf = avail - remb + extra; cum += cf;
+    if (pay === null && debtStart > 0 && debt <= 1e-6) pay = n;
+    out.push({n, kwc:(v.acKwc+v.rueKwc)*f, prod:(v.prodAc+v.prodRue)*f, prodCum, kwhAc:kwhAc*f, remb, subv, debt, interet, vente, auto, puiss, react, total, cumV, cf, cum});
   }
   return out;
 }
+const sfr = x => 'SFr. ' + fCHF(x) + '-';
+function xlHeader(r, right){
+  return `<div class="xlhead"><div class="xllogo"><b>SOL<span>E</span>OL</b><small>ENERGY SYSTEMS</small></div><div class="d">${right}</div></div>`;
+}
+function pageFlux(i){
+  const r = RES[i], v = r.v, sh = costSheet(i), C = sh.C, fl = actFlux(i), y1 = fl[0];
+  const today = new Date().toLocaleDateString('fr-CH',{day:'numeric',month:'long',year:'numeric'});
+  const surf = C.nb*(C.surfPnx||2.0412), kwc = v.acKwc + v.rueKwc;
+  const ass = G.assur*r.price, mnt = G.maint*r.price, depTot = y1.interet + ass + mnt;
+  const prk = n => { const x = fl[n-1]; return x.prodCum ? (r.net + (ass+mnt)*n)/x.prodCum*100 : 0; };
+  const kwhSold = r.surplus + v.prodRue;
+  return `<div class="xlpage">${xlHeader(r, 'Calculé le : ' + today)}
+   <div class="xlline"><span>Model SA à Moudon</span><span>${v.name}</span></div>
+   <div class="xltitle">Flux financiers de l'installation photovoltaïque</div><div class="xlsub">avec hypothèque ${fN(G.hyp*100,1)}%</div>
+   <table class="xt"><tr class="h"><td colspan="2">Données de base</td><td class="nb"></td><td class="nb"></td></tr>
+    <tr><td class="l">nombre de panneaux</td><td class="c">${fN(C.nb)}</td><td class="nb"></td><td class="nb"></td></tr>
+    <tr><td class="l">puissance des panneaux</td><td class="c">${C.wc}Wc</td><td class="nb"></td><td class="nb"></td></tr>
+    <tr><td class="l">surface de l'installation</td><td class="c">${fN(surf)} m2</td><td class="nb"></td><td class="nb"></td></tr>
+    <tr><td class="l">puissance nominale</td><td class="c">${fN(kwc,2)} kWc${v.rueKwc>0?` (${fN(v.acKwc,1)} autoconso + ${fN(v.rueKwc,1)} injection totale)`:''}</td><td class="nb"></td><td class="nb"></td></tr>
+    <tr><td class="l">Coût par KW (clé en main)</td><td></td><td></td><td class="r g">${sfr(r.price/kwc)}</td></tr>
+    <tr><td class="l">Coût par m2 (clé en main)</td><td></td><td></td><td class="r g">${sfr(r.price/surf)}/m2</td></tr>
+    <tr><td class="l">vieillissement des panneaux</td><td class="c">${fN(G.deg*100,2)}% par an</td><td colspan="2" style="font-size:9.5px">(≈ ${fN(Math.pow(1-G.deg,25)*100)}% de puissance restante après 25 ans)</td></tr>
+    <tr><td class="l">Production en 1ère année</td><td class="c">${fN(v.prodAc+v.prodRue)} kWh</td><td colspan="2" style="font-size:9.5px">(selon simulation)</td></tr>
+    <tr><td class="l">Batterie</td><td class="c">${r.hasBat?`${fN(v.batKwh)} kWh / ${fN(v.batKw)} kW`:'aucune'}</td><td colspan="2" style="font-size:9.5px">${r.hasBat?(r.mode?'sans peak shaving':'avec peak shaving'):''}</td></tr>
+    <tr class="t"><td class="nb"></td><td colspan="2" class="r">Total à financer (TVA comprise)</td><td class="r">${sfr(r.price)}</td></tr></table>
+   <table class="xt"><tr class="h"><td>FINANCEMENT</td><td class="c">intérêts</td><td class="c">remboursement</td><td class="c">montant</td></tr>
+    <tr><td><b>Rétribution unique touchée</b>${v.rueKwc>0?(G.rueOn?' (RU + RUE)':' (RU, RUE refusée)'):' (RU)'}</td><td class="bk"></td><td class="bk"></td><td class="r">${sfr(r.sub)}</td></tr>
+    <tr><td><b>Subvention communale</b></td><td class="c">0.0%</td><td class="c">0.0%</td><td class="r">SFr. 0-</td></tr>
+    <tr><td><b>Fonds propres</b></td><td class="bk"></td><td class="c">0.0%</td><td class="r">${sfr(G.fp)}</td></tr>
+    <tr><td><b>hypothèque/Leasing</b></td><td class="c">${fN(G.hyp*100,1)}%</td><td class="c g">max. possible</td><td class="r">${sfr(Math.max(r.net - G.fp,0))}</td></tr>
+    <tr class="t"><td class="nb"></td><td colspan="2" class="r">Total sources de financement</td><td class="r">${sfr(r.price)}</td></tr></table>
+   <table class="xt"><tr class="h"><td>DEPENSES (1ère année)</td><td class="c">intérêts</td><td class="c">remboursement</td><td class="c">TOTAL</td></tr>
+    <tr><td><b>Subvention communale</b></td><td class="r">SFr. 0-</td><td class="r">SFr. 0-</td><td class="r">SFr. 0-</td></tr>
+    <tr><td><b>Fonds propres</b></td><td class="bk"></td><td class="r">SFr. 0-</td><td class="r">SFr. 0-</td></tr>
+    <tr><td><b>hypothèque/Leasing</b></td><td class="r">${sfr(y1.interet)}</td><td class="c g">max. possible</td><td class="r">${sfr(y1.interet)}</td></tr></table>
+   <table class="xt"><tr><td><b>assurances</b></td><td class="c">${fN(G.assur*100,1)}%</td><td></td><td class="r">${sfr(ass)}</td></tr>
+    <tr><td><b>réserve annuelle pour maintenance</b></td><td class="c">${fN(G.maint*100,1)}%</td><td></td><td class="r">${sfr(mnt)}</td></tr>
+    <tr class="t"><td class="nb"></td><td colspan="2" class="r">Total des dépenses annuelles</td><td class="r">${sfr(depTot)}</td></tr></table>
+   <table class="xt"><tr class="h"><td>RECETTES</td><td class="c">Prix de vente</td><td class="c">Montant</td></tr>
+    <tr><td class="r">ventes annuelle d'électricité (${fN(kwhSold)} kWh/an)</td><td class="c">${fN(G.rev*100,2)} Cts/kWh</td><td class="r">${sfr(y1.vente)}</td></tr>
+    <tr><td class="r">auto-consommation de ${fN(r.tauxAc*100,1)}% (${fN(y1.kwhAc)} kWh/an), calculée à</td><td class="c">${fN(v.acPrice*100,2)} Cts/kWh</td><td class="r">${sfr(y1.auto)}</td></tr>
+    <tr><td class="r">réduction de la puissance de pointe${r.hasBat&&r.mode===0?' (peak shaving)':''}</td><td class="c">${fN(G.puiss,2)} SFr./kW/mois</td><td class="r">${sfr(y1.puiss)}</td></tr>
+    <tr><td class="r">énergie réactive (franchise réduite)</td><td class="c">${fN(G.prixQ*100,2)} Cts/kvarh</td><td class="r">${sfr(y1.react)}</td></tr>
+    <tr class="t"><td class="nb"></td><td class="r">TOTAL</td><td class="r">${sfr(y1.total)}</td></tr></table>
+   <div class="xcfh">Disponible pour rembourser la dette ou autre (CASH-FLOW)</div>
+   <div class="xcf"><span>économie/vente d'électricité</span><span>${sfr(y1.total)}</span><span>dépenses totales</span><span>${sfr(depTot)}</span>
+     <b style="text-align:right">SOLDE (cash-flow)</b><b>${sfr(y1.total - depTot)}</b></div>
+   <div style="text-align:right;margin-top:-34px"><span style="font-weight:700;font-size:11px">Rendement brut</span><br><span style="display:inline-block;background:#c6efce;border:1px solid #000;padding:1px 14px;font-size:11px">${fN(r.net>0?y1.total/r.net*100:0,2)}%</span></div>
+   <div class="xprk"><span>Prix de revient moyen du kWh sur 20, 25 et 30 ans<br>(remboursement de l'emprunt compris)</span><b>${fN(prk(20),2)} cts/kWh || ${fN(prk(25),2)} cts/kWh || ${fN(prk(30),2)} cts/kWh</b></div>
+   <div class="xfoot">Collaborateur Soleol HBA · autoconsommation et peak shaving simulés au quart d'heure (01.10.2025–30.09.2026)</div></div>`;
+}
+function pageGraph(i){
+  const r = RES[i], v = r.v, fl = actFlux(i), C = window.COSTS[i];
+  const surf = C.nb*(C.surfPnx||2.0412), y20 = fl[19].cum;
+  return `<div class="xlpage">${xlHeader(r, `Model SA à Moudon ${v.name} ${new Date().toLocaleDateString('fr-CH',{day:'numeric',month:'long',year:'numeric'})}`)}
+   <div class="xgbox"><div class="xgtitle">Cash-flow annuel :<br>toutes les liquidités dégagées les premières années sont utilisées pour rembourser intégralement la dette</div><canvas id="xgCf${i}" height="230"></canvas></div>
+   <div class="xgbox"><div class="xgtitle" style="text-align:left;margin-left:50px">liquidités cumulées</div><canvas id="xgLq${i}" height="250"></canvas></div>
+   <div class="xliq">Liquidités cumulées avec subvention unique,<br>investissement ENTIÈREMENT payé${fl.find(x=>x.debt<=1e-6)?` (après ${fl.find(x=>x.debt<=1e-6).n} ans)`:''}</div>
+   <div class="xliq" style="margin-top:6px">20 ans <span class="bx">${sfr(y20)}</span> soit ${sfr(y20/surf)}/m2</div>
+   <div class="xfoot">Collaborateur Soleol HBA</div></div>`;
+}
+function pageCost(i){
+  const r = RES[i], sh = costSheet(i), C = sh.C;
+  const rw = (a,b,c,d,e,cls='') => `<tr class="${cls}"><td>${a}</td><td class="r">${b??''}</td><td class="r">${c??''}</td><td class="r">${d??''}</td><td class="n">${e??''}</td></tr>`;
+  let t = `<table class="vt">
+    <tr><td>Nom : Model SA à 1510 Moudon</td><td colspan="3" class="st">${C.statut}</td><td></td></tr>
+    <tr><td>N° chantier</td><td colspan="3" style="font-weight:700;text-align:center">${C.type}</td><td></td></tr>
+    <tr class="gr"><td>${C.titre.replace(/\s+/g,' ')}</td><td>FFZ</td><td>${C.date}</td><td></td><td></td></tr>
+    ${rw('marque panneau','',C.panneau,'',C.notes[0])}${rw('puissance panneau (Wc)','',C.wc,'',C.notes[1])}
+    ${rw('prix panneau TTC (CHF)','',fN(C.prixPnx,2),'',C.notes[2])}${rw('surface panneau (m2)','',fN(C.surfPnx,2),'',C.notes[3])}
+    ${rw('surface utilisée (m2)','',fN(C.surf,2),'',C.notes[4])}${rw('nombre panneaux','',fN(C.nb),'',(C.notes[5]||'')+(C.notes[6]?' · '+C.notes[6]:''))}
+    ${rw('puissance nominale (kW)','',fN(C.kwc,2),'',C.notes[7]||'')}
+    <tr class="gr"><td>PRIX CLIENT</td><td></td><td></td><td>Marge brute totale</td><td></td></tr>
+    ${rw('prix clé en main TTC (CHF/kWc)','',fN(r.price/C.kwc,0),'','')}
+    <tr class="yl"><td>prix total clé en main (chf)</td><td></td><td class="r">${fCHF(r.price)}</td><td class="r k">${fCHF(r.price)}</td><td class="n">Prix à mettre dans l'offre${r.v.batOn?'':' (sans batterie)'}</td></tr>
+    <tr class="gr"><td>PRIX DE REVIENT</td><td>Quantité</td><td>Prix retenu</td><td>FV prédit</td><td>Remarque</td></tr>`;
+  t += sh.lines.map(l => rw(l.l, l.q, fCHF(l.pa)+((l.pa!==l.p&&!l.cut)?' *':''), fCHF(l.fv), l.n + ((l.pa!==l.p&&!l.cut)?' (* génie civil batterie retiré)':'') + (l.cut?' (batterie désactivée)':''), l.cut?'off':'')).join('');
+  t += rw('Total Coûts TTC','',fCHF(sh.total),fCHF(C.totalFv),'','b') +
+    `<tr class="gr"><td>MARGE</td><td></td><td></td><td>MARGE</td><td></td></tr>` +
+    rw('Différence prix total-prix revient (chf)','',fCHF(sh.marge),fCHF(C.margeFv),'','b') +
+    rw('marge (%)','',fN(sh.pct*100,2),fN(C.margeFvPct,2),'') +
+    rw('Marge cumulée, en CHF','',fCHF(sh.margeCum),'','') + rw('Marge cumulée, en %','',fN(r.price?sh.margeCum/r.price*100:0,2),'','') + '</table>';
+  return `<div class="xlpage wide"><div style="font:700 13px Arial;margin-bottom:6px">Fichier de coûts · ${r.v.name}</div><div class="tablewrap">${t}</div></div>`;
+}
+const barLabels = {id:'barLabels', afterDatasetsDraw(ch, a, o){ const ds = ch.data.datasets[0], m = ch.getDatasetMeta(0), ctx = ch.ctx; if (!o || !o.idx) return;
+  ctx.save(); ctx.font = '10px Arial'; ctx.fillStyle = '#000'; ctx.textAlign = 'center';
+  o.idx.forEach(k => { const el = m.data[k]; if (!el) return; const t = 'SFr. ' + fCHF(ds.data[k]), w = ctx.measureText(t).width; const x = Math.min(el.x, ch.chartArea.right - w/2); ctx.fillStyle = '#fff'; ctx.fillRect(x - w/2 - 2, el.y - 26, w + 4, 13); ctx.fillStyle = '#000'; ctx.fillText(t, x, el.y - 16); ctx.beginPath(); ctx.moveTo(el.x, el.y - 12); ctx.lineTo(el.x, el.y - 2); ctx.stroke(); }); ctx.restore(); }};
+function drawXlCharts(i){
+  const fl = actFlux(i), lab = fl.map(x=>x.n);
+  const opt = (lbl) => ({layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, tooltip:tipCHF, barLabels:lbl}, scales:{x:{grid:{display:false}, ticks:{font:{size:9}}}, y:{grid:{color:'#000', lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}});
+  chart('xgCf'+i, {type:'bar', data:{labels:lab, datasets:[{data:fl.map(x=>x.cf), backgroundColor:'#1a1a1a', barPercentage:.35}]}, options:opt({}), plugins:[barLabels]});
+  chart('xgLq'+i, {type:'bar', data:{labels:lab, datasets:[{data:fl.map(x=>x.cum), backgroundColor:fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), borderColor:'#1a1a1a', borderWidth:fl.map(x=>[20,25,30].includes(x.n)?1:0), barPercentage:.45}]}, options:opt({idx:[19,24,29]}), plugins:[barLabels]});
+}
 function renderAct(){
-  const H = Math.round(G.horizon);
-  const sheets = RES.map((_,i)=>costSheet(i));
+  const H = Math.round(G.horizon), sheets = RES.map((_,i)=>costSheet(i));
   const th = '<thead><tr><th></th>' + RES.map((r,i)=>`<th style="color:${COLORS[i]}">${r.v.name}</th>`).join('') + '</tr></thead>';
   const row = (l,f,hl) => `<tr class="${hl?'hl':''}"><td>${l}</td>${RES.map((r,i)=>`<td>${f(r,i)}</td>`).join('')}</tr>`;
-  const at = (r,y) => r.rows[Math.min(y, r.rows.length)-1].cum;
+  const F = RES.map((_,i)=>actFlux(i));
   document.getElementById('actSum').innerHTML = th + '<tbody>' +
     row('Batterie', r=> r.hasBat ? `${fN(r.v.batKwh)} kWh / ${fN(r.v.batKw)} kW${r.mode? ' (sans peak shaving)':''}` : 'aucune') +
-    row('Prix de l\'offre TTC (CHF)', r=>fCHF(r.price)) +
-    row('Prix de revient TTC (CHF)', (r,i)=>fCHF(sheets[i].total)) +
-    row('Marge (CHF)', (r,i)=>fCHF(sheets[i].marge), 1) +
-    row('Marge (%)', (r,i)=>fN(sheets[i].pct*100,2)+' %', 1) +
-    row('Marge cumulée (CHF)', (r,i)=>fCHF(sheets[i].margeCum)) +
-    row('Subventions RU + RUE (CHF)', r=>fCHF(r.sub)) +
-    row('Hypothèque à financer (CHF)', r=>fCHF(r.net)) +
-    row('Recettes 1re année (CHF)', r=>fCHF(r.year1)) +
-    row('Taux d\'autoconsommation (simulé)', r=>fN(r.tauxAc*100,1)+' %') +
-    row('Investissement entièrement payé après', r=>fY(r.payback), 1) +
-    row('Liquidités cumulées à 20 ans (CHF)', r=>fCHF(at(r,20))) +
-    row(`Liquidités cumulées à ${H} ans (CHF)`, r=>fCHF(r.cum), 1) +
-    row('Valeur actuelle nette (CHF)', r=>fCHF(r.npv)) + '</tbody>';
+    row('Prix de l\'offre TTC (CHF)', r=>fCHF(r.price)) + row('Prix de revient TTC (CHF)', (r,i)=>fCHF(sheets[i].total)) +
+    row('Marge (CHF / %)', (r,i)=>fCHF(sheets[i].marge)+' / '+fN(sheets[i].pct*100,2)+' %', 1) +
+    row('Rétribution unique (CHF)', r=>fCHF(r.sub)) + row('Hypothèque (CHF)', r=>fCHF(r.net)) +
+    row('Recettes 1re année (CHF)', (r,i)=>fCHF(F[i][0].total)) + row('Taux d\'autoconsommation (simulé)', r=>fN(r.tauxAc*100,1)+' %') +
+    row('Investissement entièrement payé après', (r,i)=>{ const x = F[i].find(y=>y.debt<=1e-6); return x ? x.n+' ans' : '> 30 ans'; }, 1) +
+    row('Liquidités cumulées à 20 / 25 / 30 ans (CHF)', (r,i)=>[19,24,29].map(k=>fCHF(F[i][k].cum)).join(' / '), 1) + '</tbody>';
   segs('actSel', actIdx, i => { actIdx = i; renderAct(); });
-  const r = RES[actIdx], v = r.v, sh = sheets[actIdx], c = COLORS[actIdx];
+  const v = V[actIdx];
   document.getElementById('actTog').innerHTML = `<label class="sw"><input type="checkbox" data-k="batOn" ${v.batOn?'checked':''}><span class="k"></span>Batterie</label>
      <label class="sw"><input type="checkbox" data-k="psOn" ${v.psOn?'checked':''} ${v.batOn?'':'disabled'}><span class="k"></span>Peak shaving</label>`;
   document.querySelectorAll('#actTog input').forEach(inp => inp.onchange = e => { V[actIdx][e.target.dataset.k] = e.target.checked; save(); schedule(); });
-  const fl = actFlux(actIdx), lab = fl.map(x=>x.n);
-  chart('actCf', {type:'bar', data:{labels:lab, datasets:[{label:'Cash-flow annuel', data:fl.map(x=>x.cf), backgroundColor:c, borderRadius:3}]},
-    options:{plugins:{legend:{display:false}, tooltip:tipCHF}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}});
-  chart('actLiq', {type:'bar', data:{labels:lab, datasets:[{label:'Liquidités cumulées', data:fl.map(x=>x.cum), backgroundColor:c, borderRadius:3}]},
-    options:{plugins:{legend:{display:false}, tooltip:tipCHF}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}});
-  const surf = sh.C.surf || 1;
-  document.getElementById('actLiqTxt').textContent = `Liquidités cumulées à 20 ans : ${fCHF(at(r,20))} CHF, soit ${fN(at(r,20)/surf,1)} CHF/m². Investissement entièrement payé après ${fY(r.payback)}.`;
-  document.getElementById('actCostTitle').textContent = `Fichier de coûts · ${v.name}`;
-  document.getElementById('actCostHead').innerHTML = costHead(sh, r);
-  document.getElementById('actCost').innerHTML = costTable(sh, r);
-  document.getElementById('actFluxTitle').textContent = `Flux investissement propre · ${v.name}`;
-  document.getElementById('actWork').innerHTML = workTable(r);
-  document.getElementById('actFlux').innerHTML = fluxTable(fl);
-  bindTips(document.getElementById('tab-act'));
-}
-function costHead(sh, r){
-  const C = sh.C;
-  return `${C.type} · ${C.titre.replace('DONNEES GENERALES','Données générales').replace(/\s+/g,' ')} · ${C.date} · ${C.statut}<br>
-    ${fN(C.nb)} panneaux ${C.panneau} ${C.wc} Wc · ${fN(C.kwc,2)} kWc · surface ${fN(C.surf)} m² · prix ${fN(C.chfKwc)} CHF/kWc<br>${C.notes.join(' · ')}`;
-}
-function costTable(sh, r){
-  const C = sh.C;
-  return '<thead><tr><th>Prix de revient</th><th>Quantité</th><th>Prix retenu TTC (CHF)</th><th>FV prédit (CHF)</th><th>Remarque</th></tr></thead><tbody>' +
-    sh.lines.map(l => `<tr class="${l.cut?'off':''}"><td>${l.l}</td><td>${l.q ?? ''}</td><td>${fCHF(l.pa)}${(l.pa!==l.p && !l.cut)?' *':''}</td><td>${fCHF(l.fv)}</td><td class="n">${l.n}${(l.pa!==l.p && !l.cut)?' (* génie civil batterie retiré)':''}${l.cut?' (batterie désactivée)':''}</td></tr>`).join('') +
-    `<tr class="sum"><td>Total coûts TTC</td><td></td><td>${fCHF(sh.total)}</td><td>${fCHF(C.totalFv)}</td><td></td></tr>
-     <tr class="sum"><td>Prix de l'offre TTC</td><td></td><td>${fCHF(r.price)}</td><td></td><td class="n">${r.v.batOn?'Prix à mettre dans l\'offre':'Prix de l\'offre moins la batterie (paramètre « Baisse du prix si pas de batterie »)'}</td></tr>
-     <tr class="sum"><td>Marge (prix total − prix de revient)</td><td></td><td>${fCHF(sh.marge)}</td><td>${fCHF(C.margeFv)}</td><td></td></tr>
-     <tr><td>Marge (%)</td><td></td><td>${fN(sh.pct*100,2)} %</td><td>${fN(C.margeFvPct,2)} %</td><td></td></tr>
-     <tr><td>Marge cumulée (CHF / %)</td><td></td><td>${fCHF(sh.margeCum)}</td><td>${r.price?fN(sh.margeCum/r.price*100,2):0} %</td><td class="n">Valeur du fichier, ajustée de l'écart de marge si la batterie est retirée.</td></tr></tbody>`;
-}
-function workTable(r){
-  const v = r.v;
-  const ru = ruAmount(v.acKwc), rue = r.sub - ru;
-  const P = [
-    ['Nom du client','Model SA à Moudon'], ['Nom de l\'offre', v.name],
-    ['Puissance partie injection totale', fN(v.rueKwc,2)+' kWc'], ['Puissance partie autoconsommation', fN(v.acKwc,2)+' kWc'],
-    ['Production partie injection totale', fN(v.prodRue)+' kWh'], ['Production partie autoconsommation', fN(v.prodAc)+' kWh'],
-    ['Production totale 1re année', fN(v.prodAc+v.prodRue)+' kWh'], ['Total à financer TTC', fCHF(r.price)+' CHF'],
-    ['Subvention RU (autoconsommation)', fCHF(ru)+' CHF'], ['Subvention RUE (injection totale)', fCHF(rue)+' CHF'+(v.rueKwc>0&&!G.rueOn?' (RUE refusée : barème RU)':'')],
-    ['Hypothèque / leasing', fCHF(r.net)+' CHF à '+fN(G.hyp*100,2)+' %'], ['Taux d\'actualisation', fN(G.actu*100,2)+' %'],
-    ['Assurances', fN(G.assur*100,2)+' % du prix'], ['Réserve de maintenance', fN(G.maint*100,2)+' % du prix'],
-    ['Vieillissement des panneaux', fN(G.deg*100,2)+' %/an'], ['Tarif de revente', fN(G.rev*100,2)+' ct/kWh'],
-    ['Autoconsommation', fN(v.acPrice*100,2)+' ct/kWh'], ['Taux d\'autoconsommation (simulé au 1/4 h)', fN(r.tauxAc*100,1)+' % (fichier : 95 % exemple)'],
-    ['Production autoconsommée 1re année', fN(r.autoconso)+' kWh'], ['Batterie', r.hasBat?`${fN(v.batKwh)} kWh / ${fN(v.batKw)} kW${r.mode?' sans peak shaving':''}`:'aucune'],
-  ];
-  let h = '<tbody>';
-  for (let k = 0; k < P.length; k += 2) h += `<tr>${[P[k],P[k+1]].map(p=>p?`<td>${p[0]}</td><td>${p[1]}</td>`:'<td></td><td></td>').join('')}</tr>`;
-  return h + '</tbody>';
-}
-function fluxTable(fl){
-  return '<thead><tr><th>Année</th><th>Puissance nominale (kWc)</th><th>Production annuelle (kWh)</th><th>Autoconsommation (kWh)</th><th>Arrivée RU / RUE</th><th>Remboursement hypoth.</th><th>Évolution hypothèque</th><th>Intérêts hypoth.</th><th>Vente électricité</th><th>Autoconsommation (CHF)</th><th>Puissance et réactif (CHF)</th><th>TOTAL</th><th>Vente élec cumulée</th><th>Dépenses</th><th>Cash-flow II</th><th>Liquidités cumulées</th></tr></thead><tbody>' +
-    fl.map(x=>`<tr><td>${x.n}</td><td>${fN(x.kwc,1)}</td><td>${fN(x.prod)}</td><td>${fN(x.kwhAc)}</td><td>${x.subv?fCHF(x.subv):''}</td><td>${fCHF(x.remb)}</td><td>${fCHF(x.debt)}</td><td>${fCHF(x.interet)}</td><td>${fCHF(x.vente)}</td><td>${fCHF(x.auto)}</td><td>${fCHF(x.puiss)}</td><td>${fCHF(x.total)}</td><td>${fCHF(x.cumV)}</td><td>${fCHF(x.dep)}</td><td>${fCHF(x.cf)}</td><td>${fCHF(x.cum)}</td></tr>`).join('') + '</tbody>';
+  document.querySelectorAll('#actView button').forEach(b => { b.classList.toggle('on', b.dataset.w === actView); b.onclick = () => { actView = b.dataset.w; renderAct(); }; });
+  ['xgCf0','xgLq0','xgCf1','xgLq1','xgCf2','xgLq2'].forEach(id => { if (CH[id]) { CH[id].destroy(); delete CH[id]; } });
+  const parts = [];
+  if (actView === 'all' || actView === 'flux') parts.push(pageFlux(actIdx));
+  if (actView === 'all' || actView === 'graph') parts.push(pageGraph(actIdx));
+  if (actView === 'all' || actView === 'cost') parts.push(pageCost(actIdx));
+  document.getElementById('actPages').innerHTML = parts.join('');
+  if (actView === 'all' || actView === 'graph') drawXlCharts(actIdx);
 }
 function reportAct(){
-  const H = Math.round(G.horizon), today = new Date().toLocaleDateString('fr-CH');
-  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire · coûts, marges et flux d'investissement propre · ${today} · document interne</div></div><div class="rsol"><span>SOLEOL</span><small>ENERGIE</small></div></div>
-   <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes.<br>Prix de revient et marges : fichier de prix du 18.11.2026 (V1 et V2 « à corriger »).</div>
+  const today = new Date().toLocaleDateString('fr-CH');
+  let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire · ${today} · document interne</div></div><div class="rsol"><span>SOLEOL</span><small>ENERGIE</small></div></div>
+   <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes. Coûts : fichier de prix du 18.11.2026.</div>
    <h2>Synthèse</h2><table>${document.getElementById('actSum').innerHTML}</table>`;
-  const keep = actIdx;
   RES.forEach((r,i) => {
-    actIdx = i; const sh = costSheet(i), fl = actFlux(i), c = COLORS[i];
-    const imgCf = chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data:fl.map(x=>x.cf), backgroundColor:c}]}, options:{plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}}, 380, 240);
-    const imgLq = chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data:fl.map(x=>x.cum), backgroundColor:c}]}, options:{plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}}, 380, 240);
-    h += `<div class="pb"></div><h2 style="color:${c}">${r.v.name} · fichier de coûts</h2><p class="note">${costHead(sh, r)}</p><table class="ctab tiny">${costTable(sh, r)}</table>
-     <div class="pb"></div><h2 style="color:${c}">${r.v.name} · flux investissement propre</h2><table class="tiny">${workTable(r)}</table>
-     <div class="two"><div><h3>Cash-flow annuel</h3><img class="ch" src="${imgCf}"></div><div><h3>Liquidités cumulées</h3><img class="ch" src="${imgLq}"></div></div>
-     <p class="note">Toutes les liquidités dégagées les premières années remboursent intégralement la dette. Investissement entièrement payé après ${fY(r.payback)} ; liquidités cumulées à ${H} ans : ${fCHF(r.cum)} CHF.</p>
-     <table class="tiny">${fluxTable(fl)}</table>`;
+    const fl = actFlux(i);
+    const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
+    const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
+                          .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`);
+    h += `<div class="pb"></div>${pageFlux(i)}${g}${pageCost(i)}`;
   });
-  actIdx = keep;
-  h += `<p class="note" style="margin-top:12px">Autoconsommation, ventes et économies de puissance calculées au quart d'heure avec les paramètres saisis le ${today}. Document interne, ne pas transmettre au client.</p>`;
   const el = document.getElementById('report'); el.innerHTML = h;
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));

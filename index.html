@@ -88,19 +88,15 @@
 
 <!-- ACTIONNAIRE -->
 <section id="tab-act" class="panel">
-  <div class="box"><h3>Synthèse actionnaire <i class="tip" data-tip="Vue interne Soleol : prix de l'offre, prix de revient et marge (fichier de prix), puis flux d'investissement propre calculés avec l'autoconsommation simulée au quart d'heure. Les boutons Batterie et Peak shaving s'appliquent ici comme dans les autres onglets.">i</i></h3><div class="tablewrap"><table id="actSum"></table></div></div>
   <div class="row">
     <div class="seg" id="actSel"></div>
     <div class="toggles" id="actTog" style="margin-bottom:12px"></div>
+    <div class="seg" id="actView"><button data-w="all" class="on">Tout</button><button data-w="cost">Fichier de coûts</button><button data-w="flux">Flux financiers</button><button data-w="graph">Graphiques</button></div>
     <button class="btn sm" id="repAct">Rapport PDF actionnaire</button>
   </div>
-  <div class="grid2">
-    <div class="box"><h3>Cash-flow annuel <i class="tip" data-tip="Liquidités dégagées chaque année. Toutes les liquidités dégagées les premières années remboursent intégralement la dette (même logique que les fichiers de flux).">i</i></h3><canvas id="actCf"></canvas><p class="cap">Toutes les liquidités dégagées les premières années remboursent intégralement la dette.</p></div>
-    <div class="box"><h3>Liquidités cumulées, investissement entièrement payé</h3><canvas id="actLiq"></canvas><p class="cap" id="actLiqTxt"></p></div>
-  </div>
-  <div class="box"><h3 id="actCostTitle">Fichier de coûts</h3><div id="actCostHead" class="cap" style="margin:0 0 8px"></div><div class="tablewrap"><table id="actCost" class="ctab"></table></div></div>
-  <div class="box"><h3 id="actFluxTitle">Flux investissement propre</h3><div class="tablewrap"><table id="actWork"></table></div></div>
-  <div class="box"><h3>Calculs année par année <i class="tip" data-tip="Même structure que la feuille Calculs des fichiers de flux. Autoconsommation et ventes reprises de la simulation au quart d'heure, et non plus de l'exemple à 95 %.">i</i></h3><div class="tablewrap"><table id="actFlux"></table></div></div>
+  <p class="cap" style="margin:-4px 0 12px">Même présentation que les fichiers Excel (fichier vert, « Tableau client » et « Graph » des flux d'investissement propre). Les montants d'autoconsommation, de revente et de peak shaving viennent de la simulation au quart d'heure et suivent les boutons Batterie et Peak shaving.</p>
+  <div class="xlpages" id="actPages"></div>
+  <div class="box"><h3>Synthèse des trois variantes</h3><div class="tablewrap"><table id="actSum"></table></div></div>
 </section>
 
 <!-- PARAM -->
