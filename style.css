@@ -142,3 +142,8 @@ tr.hl td{font-weight:700}
 }
 .vt td,.xt td{text-align:left}
 .vt td.r,.xt td.r{text-align:right}.xt td.c{text-align:center}.xt td.l{text-align:right}
+input.xe{font:inherit;color:inherit;text-align:right;border:1px solid #e0c96a;background:#fff8c9;padding:0 3px;margin:0;height:16px;border-radius:2px}
+input.xe:hover{border-color:#b89a22}input.xe:focus{outline:2px solid #1c3d5a;background:#fff}
+.vt input.xe{height:15px}
+.xt td[colspan="2"]{white-space:normal}
+.xlpage{overflow-x:auto}

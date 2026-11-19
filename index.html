@@ -28,6 +28,8 @@
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
   <button class="tab" data-tab="act">Actionnaire</button>
+  <button class="tab" data-tab="vert">Fichier Vert</button>
+  <button class="tab" data-tab="fip">Flux Inv. propre</button>
   <span class="status" id="status"></span>
   <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
 </nav>
@@ -91,12 +93,34 @@
   <div class="row">
     <div class="seg" id="actSel"></div>
     <div class="toggles" id="actTog" style="margin-bottom:12px"></div>
-    <div class="seg" id="actView"><button data-w="all" class="on">Tout</button><button data-w="cost">Fichier de coûts</button><button data-w="flux">Flux financiers</button><button data-w="graph">Graphiques</button></div>
     <button class="btn sm" id="repAct">Rapport PDF actionnaire</button>
   </div>
-  <p class="cap" style="margin:-4px 0 12px">Même présentation que les fichiers Excel (fichier vert, « Tableau client » et « Graph » des flux d'investissement propre). Les montants d'autoconsommation, de revente et de peak shaving viennent de la simulation au quart d'heure et suivent les boutons Batterie et Peak shaving.</p>
-  <div class="xlpages" id="actPages"></div>
   <div class="box"><h3>Synthèse des trois variantes</h3><div class="tablewrap"><table id="actSum"></table></div></div>
+  <p class="cap">Le détail est dans les onglets « Fichier Vert » et « Flux Inv. propre », présentés comme les fichiers Excel.</p>
+</section>
+
+<!-- FICHIER VERT -->
+<section id="tab-vert" class="panel">
+  <div class="row">
+    <div class="seg" id="vertSel"></div>
+    <div class="toggles" id="vertTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="vertReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
+    <button class="btn sm" id="vertPdf">Rapport PDF actionnaire</button>
+  </div>
+  <p class="cap" style="margin:-4px 0 12px">Même feuille que le fichier Excel « Fichier Vert ». Les cases jaunes se modifient : tapez la valeur puis Entrée. Le total, la marge et la marge cumulée se recalculent.</p>
+  <div class="xlpages" id="vertPages"></div>
+</section>
+
+<!-- FLUX INV. PROPRE -->
+<section id="tab-fip" class="panel">
+  <div class="row">
+    <div class="seg" id="fipSel"></div>
+    <div class="toggles" id="fipTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="fipReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
+    <button class="btn sm" id="fipPdf">Rapport PDF actionnaire</button>
+  </div>
+  <p class="cap" style="margin:-4px 0 12px">Mêmes feuilles que les fichiers Excel « Flux Inv. propre » (Tableau client et Graph). Les cases jaunes se modifient : tapez la valeur puis Entrée. Autoconsommation, revente et peak shaving viennent de la simulation au quart d'heure et suivent les boutons Batterie et Peak shaving. Les taux (hypothèque, assurance, maintenance, prix de vente…) sont communs aux trois variantes.</p>
+  <div class="xlpages" id="fipPages"></div>
 </section>
 
 <!-- PARAM -->
