@@ -108,15 +108,15 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
   for (let i = 0; i < n; i++){
     if (S.m[i] !== cur){ cur = S.m[i]; T = mode ? Infinity : T0; }
     const x = S.load[i] - prod*S.pv[i];
-    let c = 0, d = 0, kind = 0; // kind : 1 charge solaire, 2 charge réseau, 3 décharge pointe, 4 décharge autoconso
+    let c = 0, d = 0, kind = 0, f = 1; // kind : 1 charge solaire, 2 charge réseau, 3 décharge pointe, 4 décharge autoconso
     if (keep) TA[i] = T;
     if (cap > 0){
       const res = ((S.wk[i] && WKF) || mode) ? 0 : (S.su[i] ? Rs : Rw)*cap;
       if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
-      else if (x > T - SC.m){ d = Math.min((x-(T-SC.m))*(1+SC.o), pw, soc*eta/DT); kind = 3; }
+      else if (x > T - SC.m){ f = 1 + SC.o; d = Math.min(x-(T-SC.m), pw, soc*eta/(f*DT)); kind = 3; }
       else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
       else if (G.gridChg && soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; kind = 2; }
-      soc += c*eta*DT - d/eta*DT;
+      soc += c*eta*DT - d*f/eta*DT;
     }
     if (keep){ cA[i] = c; dA[i] = d; kA[i] = kind; }
     const y = x + c - d;
@@ -464,7 +464,8 @@ function renderPS(){
       {label:'Production solaire', data:pv, borderColor:'#eda100', borderWidth:thin, pointRadius:0},
       {label:'Soutirage sans batterie', data:net, borderColor:'#c0392b', borderDash:[4,3], borderWidth:thin, pointRadius:0},
       {label:'Soutirage réel', data:gr, borderColor:COLORS[psIdx], borderWidth:thin+0.4, pointRadius:0},
-      {label:'Seuil de pointe', data:thr, borderColor:'#1a1a19', borderDash:[2,3], borderWidth:1, pointRadius:0, spanGaps:true}]},
+      {label:'Seuil de pointe (facturé)', data:thr, borderColor:'#1a1a19', borderDash:[2,3], borderWidth:1, pointRadius:0, spanGaps:true},
+      ...(scen().m > 0 ? [{label:`Niveau visé par la batterie (seuil − ${scen().m} kW de marge)`, data:thr.map(t=> t==null ? null : t - scen().m), borderColor:'#1c3d5a', borderDash:[6,3], borderWidth:1.2, pointRadius:0, spanGaps:true}] : [])]},
     options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>c.parsed.y===null?'':`${c.dataset.label}: ${fN(c.parsed.y)} kW`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kW'}}}}});
   chart('psBat', {type:'bar', data:{labels:lab, datasets:[
       {label:'Charge solaire', data:cS, backgroundColor:'#1baf7a', stack:'s'},
