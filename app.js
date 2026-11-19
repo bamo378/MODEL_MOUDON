@@ -13,11 +13,11 @@ const MONTHS = ['oct. 25','nov. 25','déc. 25','janv. 26','févr. 26','mars 26',
 /* ---------------- Paramètres par défaut (fichiers) ---------------- */
 const DEF_VAR = [
   {name:'V1 · RU + RUE', acKwc:1005.48, prodAc:906096, rueKwc:3195.29, prodRue:3534250, price:3171600,
-   batOn:true, psOn:true, batKwh:500, batKw:125, batReduc:99336, acPrice:0.097, T:730, R:0.8},
+   batOn:true, psOn:true, batKwh:500, batKw:125, batReduc:99336, acPrice:0.097, T:730, R:0.8, Rs:0.8},
   {name:'V2 · Tout en autoconsommation', acKwc:4200.77, prodAc:4576824, rueKwc:0, prodRue:0, price:3276600,
-   batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:199024, acPrice:0.097, T:640, R:1},
+   batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:199024, acPrice:0.097, T:640, R:1, Rs:1},
   {name:'V3 · RU, moins de panneaux', acKwc:2912.07, prodAc:3114100, rueKwc:0, prodRue:0, price:2169500,
-   batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:220222, acPrice:0.097, T:650, R:1},
+   batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:220222, acPrice:0.097, T:650, R:1, Rs:1},
 ];
 const DEF_GLOB = {rev:0.0741, puiss:9.47, prixQ:0.0282, rueOn:true, rueRate:520, ru1:360, ru2:300, ru3:250,
   deg:0.0035, assur:0.003, maint:0.002, hyp:0.02, actu:0.02, fp:0, horizon:25, subYear:1,
@@ -36,7 +36,8 @@ const VAR_FIELDS = [
   ['batKw','Puissance de charge et décharge (kW)',0,'Puissance maximale que la batterie peut fournir ou absorber. V1 : 125 kW ; Pylontech : 500 kW.'],
   ['batReduc','Baisse du prix si pas de batterie (CHF TTC)',0,'Montant retiré du prix de l\'offre quand la batterie est désactivée : coût de la batterie du fichier vert avec la même marge que l\'offre (V3 : génie civil de la batterie compris).'],
   ['T','Seuil de pointe visé (kW)',0,'Au-dessus de ce soutirage, la batterie se décharge pour écrêter la pointe. Si une pointe plus haute passe quand même, le seuil remonte jusqu\'à la fin du mois. Utilisé si le réglage automatique est désactivé.'],
-  ['R','Réserve pour les pointes (0 à 1)',2,'Part de la capacité gardée en semaine pour le peak shaving. 1 = la batterie ne sert qu\'aux pointes en semaine. Le week-end la réserve est libérée pour stocker le surplus. Utilisé si le réglage automatique est désactivé.'],
+  ['R','Réserve pour les pointes, hiver oct.–mars (0 à 1)',2,'Part de la capacité gardée en semaine pour le peak shaving d\'octobre à mars. Au-dessus de cette réserve, la batterie couvre la consommation. 1 = la batterie ne sert qu\'aux pointes en semaine. Le week-end la réserve est libérée. Utilisé si le réglage automatique est désactivé.'],
+  ['Rs','Réserve pour les pointes, été avr.–sept. (0 à 1)',2,'Même chose d\'avril à septembre. En été le surplus solaire recharge la batterie : une réserve plus basse permet de vider le reste la nuit pour l\'usine. Utilisé si le réglage automatique est désactivé.'],
 ];
 const GLOB_FIELDS = [
   ['sec','Tarifs'],
@@ -72,19 +73,21 @@ function save(){ try { localStorage.setItem('moudon_state', JSON.stringify({V, G
 /* ---------------- Préparation des séries ---------------- */
 function series(start, n, load, pv, testYear){
   const t0 = Date.UTC(+start.slice(0,4), +start.slice(5,7)-1, +start.slice(8,10));
-  const m = new Uint8Array(n), wk = new Uint8Array(n);
+  const m = new Uint8Array(n), wk = new Uint8Array(n), su = new Uint8Array(n);
   for (let i = 0; i < n; i++){
     const d = new Date(t0 + i*900000), h = d.getUTCHours() + d.getUTCMinutes()/60, w = d.getUTCDay();
     m[i] = testYear ? (d.getUTCFullYear()-2025)*12 + d.getUTCMonth() - 9 : d.getUTCMonth();
+    su[i] = (d.getUTCMonth() >= 3 && d.getUTCMonth() <= 8) ? 1 : 0; // été : avril à septembre
     wk[i] = ((w === 5 && h >= 22) || w === 6 || (w === 0 && h < 20)) ? 1 : 0;
   }
-  return {n, t0, load: Float64Array.from(load), pv: Float64Array.from(pv, x => x/1e7), m, wk, nm: testYear ? 12 : 9};
+  return {n, t0, load: Float64Array.from(load), pv: Float64Array.from(pv, x => x/1e7), m, wk, su, nm: testYear ? 12 : 9};
 }
 const YEAR = series(D.start, D.n, D.load, D.pv, true);
 const CAL = series(D.calStart, D.calN, D.calLoad, D.calPv, false);
 
 /* ---------------- Simulation quart d'heure ---------------- */
 function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
+  const Rw = Array.isArray(R) ? R[0] : R, Rs = Array.isArray(R) ? R[1] : R; // réserve hiver (oct.–mars) / été (avr.–sept.)
   // mode 0 : peak shaving + autoconsommation ; mode 1 : autoconsommation seule
   const n = S.n, nm = S.nm;
   const peak = new Float64Array(nm), imp = new Float64Array(nm);
@@ -97,7 +100,7 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
     let c = 0, d = 0, kind = 0; // kind : 1 charge solaire, 2 charge réseau, 3 décharge pointe, 4 décharge autoconso
     if (keep) TA[i] = T;
     if (cap > 0){
-      const res = (S.wk[i] || mode) ? 0 : R*cap;
+      const res = (S.wk[i] || mode) ? 0 : (S.su[i] ? Rs : Rw)*cap;
       if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
       else if (x > T){ d = Math.min(x-T, pw, soc*eta/DT); kind = 3; }
       else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
@@ -123,11 +126,16 @@ const tuneCache = new Map();
 function tune(prodPerKwh, cap, pw, ac){
   const key = [prodPerKwh, cap, pw, ac, G.puiss, G.rev, G.prixQ, G.eta].join('|');
   if (tuneCache.has(key)) return tuneCache.get(key);
+  const cost = (T, R) => annualCost(sim(CAL, prodPerKwh, cap, pw, T, R, G.eta, 0, false), ac, Q_CAL);
+  // 1) seuil et réserve communs ; 2) réserve d'été séparée
   let best = null;
   for (let T = 520; T <= 960; T += 10) for (const R of [0.2,0.4,0.6,0.8,1]){
-    const c = annualCost(sim(CAL, prodPerKwh, cap, pw, T, R, G.eta, 0, false), ac, Q_CAL);
-    if (!best || c < best.c) best = {c, T, R};
+    const c = cost(T, R); if (!best || c < best.c) best = {c, T, R, Rs: R};
   }
+  // Réserve d'été : abaissée seulement si le gain est net (> 100 CHF/an sur la période de réglage)
+  let bs = best;
+  for (const Rs of [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]){ const c = cost(best.T, [best.R, Rs]); if (c < bs.c - 1e-6) bs = {c, T: best.T, R: best.R, Rs}; }
+  if (best.c - bs.c > 100) best = bs;
   tuneCache.set(key, best); return best;
 }
 
@@ -140,10 +148,10 @@ function compute(v){
   if (!BASE) BASE = sim(YEAR, 0, 0, 0, 1e9, 1, G.eta, 1, false);
   const hasBat = v.batOn && v.batKwh > 0;
   const cap = hasBat ? v.batKwh*G.usable : 0, pw = hasBat ? v.batKw : 0;
-  let T = v.T, R = v.R;
+  let T = v.T, R = v.R, Rs = v.Rs ?? v.R;
   const mode = (hasBat && v.psOn) ? 0 : 1;
-  if (hasBat && v.psOn && G.auto){ const t = tune(v.prodAc, cap, pw, v.acPrice); T = t.T; R = t.R; }
-  const r = sim(YEAR, v.prodAc, cap, pw, T, R, G.eta, mode, true);
+  if (hasBat && v.psOn && G.auto){ const t = tune(v.prodAc, cap, pw, v.acPrice); T = t.T; R = t.R; Rs = t.Rs; }
+  const r = sim(YEAR, v.prodAc, cap, pw, T, [R, Rs], G.eta, mode, true);
   const r0 = hasBat ? sim(YEAR, v.prodAc, 0, 0, 1e9, 1, G.eta, 1, false) : r;
   const sum = a => a.reduce((s,x)=>s+x, 0);
   const impB = sum(BASE.imp), imp = sum(r.imp);
@@ -180,7 +188,7 @@ function compute(v){
   if (payback === null && price - G.fp <= 0) payback = 0;
   const net = price - sub;
   const simple = net / ((sEnergy + sExp + sQ + sRue + sPeak) - dep);
-  return {v, hasBat, mode, T, R, r, price, sub, net, dep, sEnergy, sPeak, sQ, sExp, sRue, batPart,
+  return {v, hasBat, mode, T, R, Rs, cap, r, price, sub, net, dep, sEnergy, sPeak, sQ, sExp, sRue, batPart,
     year1: sEnergy + sPeak + sQ + sExp + sRue, autoconso: v.prodAc - r.exp,
     tauxAc: v.prodAc > 0 ? (v.prodAc - r.exp)/v.prodAc : 0, tauxAc0: v.prodAc > 0 ? (v.prodAc - r0.exp)/v.prodAc : 0,
     couverture: (v.prodAc - r.exp)/(sum(BASE.imp)), tauxTot: (v.prodAc + v.prodRue) > 0 ? (v.prodAc - r.exp)/(v.prodAc + v.prodRue) : 0, surplus: r.exp, rueProd: v.prodRue,
@@ -230,7 +238,7 @@ function renderCards(){
        <div class="kpi"><b>${fN(r.peakAvg)} kW</b><span>Pointe moyenne / mois</span></div>
        <div class="kpi"><b>${fM(r.cum)}</b><span>Liquidités à ${Math.round(G.horizon)} ans (CHF)</span></div>
      </div>
-     ${r.hasBat && r.mode===0 ? `<div class="cap">Pilotage : seuil ${fN(r.T)} kW, réserve ${fN(r.R*100)} %${G.auto?' (réglage automatique)':''}</div>` : ''}
+     ${r.hasBat && r.mode===0 ? `<div class="cap">Pilotage : seuil ${fN(r.T)} kW, réserve pointes hiver ${fN(r.R*r.cap)} kWh, été ${fN(r.Rs*r.cap)} kWh${G.auto?' (réglage automatique)':''}</div>` : ''}
    </div>`).join('');
   el.querySelectorAll('input[data-k]').forEach(inp => inp.onchange = e => { V[+e.target.dataset.v][e.target.dataset.k] = e.target.checked; save(); schedule(); });
   bindTips(el);
@@ -350,7 +358,7 @@ function renderPS(){
     i0 = S.m.indexOf(mk); i1 = i0; while (i1 < S.n && S.m[i1] === mk) i1++;
   }
   const days = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
-  const lab = [], ld = [], pv = [], net = [], gr = [], thr = [], cS = [], cG = [], dP = [], dA = [], so = [];
+  const lab = [], ld = [], pv = [], net = [], gr = [], thr = [], cS = [], cG = [], dP = [], dA = [], so = [], rsv = [];
   let E = {load:0, pv:0, direct:0, pvBat:0, pvSold:0, gridBat:0, batPeak:0, batAc:0, imp:0, maxNet:0, maxImp:0, hours:0};
   const hasBat = r.hasBat;
   for (let i = i0; i < i1; i++){
@@ -360,7 +368,7 @@ function renderPS(){
     const L = S.load[i], P = r.v.prodAc*S.pv[i], x = L - P, y = sim_.grid[i];
     const c = sim_.ch[i], dd = sim_.dis15[i], k = sim_.kind[i];
     ld.push(L); pv.push(P); net.push(Math.max(x,0)); gr.push(Math.max(y,0)); thr.push(hasBat && r.mode===0 && isFinite(sim_.thr[i]) ? sim_.thr[i] : null);
-    cS.push(k===1 ? c : 0); cG.push(k===2 ? c : 0); dP.push(k===3 ? -dd : 0); dA.push(k===4 ? -dd : 0); so.push(sim_.soc[i]);
+    rsv.push(hasBat && r.mode===0 ? (S.wk[i] ? 0 : (S.su[i] ? r.Rs : r.R)*r.cap) : null); cS.push(k===1 ? c : 0); cG.push(k===2 ? c : 0); dP.push(k===3 ? -dd : 0); dA.push(k===4 ? -dd : 0); so.push(sim_.soc[i]);
     E.load += L*DT; E.pv += P*DT; E.direct += Math.min(L,P)*DT;
     if (k===1) E.pvBat += c*DT; if (k===2) E.gridBat += c*DT; if (k===3) E.batPeak += dd*DT; if (k===4) E.batAc += dd*DT;
     E.pvSold += Math.max(-y,0)*DT; E.imp += Math.max(y,0)*DT;
@@ -395,8 +403,9 @@ function renderPS(){
       {label:'Décharge peak shaving', data:dP, backgroundColor:'#c0392b', stack:'s'},
       {label:'Décharge autoconsommation', data:dA, backgroundColor:'#2a78d6', stack:'s'}]},
     options:{animation:false, barPercentage:1, categoryPercentage:1, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{filter:c=>c.parsed.y!==0, callbacks:{label:c=>`${c.dataset.label}: ${fN(Math.abs(c.parsed.y))} kW`}}}, scales:{x:{...xax, stacked:true}, y:{...gridY, stacked:true, title:{display:true,text:'kW'}}}}});
-  chart('psSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:1.5, pointRadius:0}]},
-    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
+  chart('psSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:1.5, pointRadius:0},
+      {label:'Réserve gardée pour les pointes', data:rsv, borderColor:'#c0392b', borderDash:[5,3], borderWidth:1.3, pointRadius:0, fill:false, stepped:true}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true, position:'bottom'}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
   const hb = (id, parts, total) => chart(id, {type:'bar', data:{labels:[''], datasets: parts.map(p=>({label:`${p[0]} : ${fN(p[1]/1000,1)} MWh (${total?fN(p[1]/total*100):0} %)`, data:[p[1]/1000], backgroundColor:p[2]}))},
     options:{indexAxis:'y', animation:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label}}}, scales:{x:{stacked:true, ...gridY, title:{display:true,text:'MWh'}}, y:{stacked:true, grid:{display:false}}}}});
   document.getElementById('psRate').textContent = `Taux d'autoconsommation sur la période : ${E.pv ? fN((E.pv - E.pvSold)/E.pv*100,1) : 0} % · consommation couverte par le solaire : ${E.load ? fN((E.direct + E.pvBat*G.eta*G.eta)/E.load*100,1) : 0} %.`;
@@ -516,7 +525,7 @@ function report(expert){
       ${row('Autoconsommé (MWh/an)', r=>fN(r.autoconso/1000))}${row('Surplus revendu (MWh/an)', r=>fN(r.surplus/1000))}
       ${row('Taux d\'autoconsommation sans / avec batterie', r=>fN(r.tauxAc0*100,1)+' % / '+fN(r.tauxAc*100,1)+' %')}
       ${row('Soutiré au réseau (MWh/an)', r=>fN(sumP(r.impMonths)/1000))}
-      ${row('Seuil de pointe / réserve', r=>r.hasBat&&r.mode===0?fN(r.T)+' kW / '+fN(r.R*100)+' %':'–')}
+      ${row('Seuil de pointe / réserve', r=>r.hasBat&&r.mode===0?fN(r.T)+' kW / hiver '+fN(r.R*r.cap)+' kWh, été '+fN(r.Rs*r.cap)+' kWh':'–')}
       ${row('Cycles de batterie par an', r=>r.hasBat?fN(r.cycles):'–')}</tbody></table>
      <h2>Pointes mensuelles (kW)</h2><table><thead><tr><th>Mois</th><th>Sans PV</th>${names.map((n,i)=>`<th style="color:${COLORS[i]}">${n.split(' · ')[0]}</th>`).join('')}</tr></thead><tbody>
       ${MONTHS.map((m,k)=>`<tr><td>${m}</td><td>${fN(BASE.peak[k])}</td>${RES.map(r=>`<td>${fN(r.peakMonths[k])}</td>`).join('')}</tr>`).join('')}</tbody></table>
