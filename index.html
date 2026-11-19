@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119m">
+<link rel="stylesheet" href="style.css?v=20261119q">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119m"></script>
-<script src="costs.js?v=20261119m"></script>
+<script src="data.js?v=20261119q"></script>
+<script src="costs.js?v=20261119q"></script>
 </head>
 <body>
 <header class="top">
@@ -25,6 +25,7 @@
   <button class="tab active" data-tab="comp">Comparaison</button>
   <button class="tab" data-tab="flux">Flux financiers</button>
   <button class="tab" data-tab="ps">Peak shaving</button>
+  <button class="tab" data-tab="bat">Taille de batterie</button>
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
   <button class="tab" data-tab="act">Résumé court investissement</button>
@@ -81,6 +82,49 @@
   </div>
   <div class="box"><h3>Coût des pointes et gain du peak shaving, mois par mois <i class="tip" data-tip="Pointe facturée chaque mois sans solaire (courbe de charge réelle), avec le solaire seul et avec le solaire et la batterie. Les colonnes de droite montrent pourquoi la batterie tient le seuil en été et pas toujours en hiver.">i</i></h3><div class="tablewrap"><table id="psCost"></table></div><p class="cap" id="psCostTxt"></p></div>
   <div class="box"><h3>Règles de gestion de la batterie <i class="tip" data-tip="Ce que fait la batterie à chaque quart d'heure dans la simulation. Seuil et réserves réglés automatiquement sur janvier à septembre 2025, modifiables dans Paramètres.">i</i></h3><div id="psRules"></div></div>
+</section>
+
+<!-- TAILLE DE BATTERIE -->
+<section id="tab-bat" class="panel">
+  <div class="row">
+    <div class="seg" id="bsSel"></div>
+    <label class="inl">Prix <input type="number" id="bs_perKwh" step="1" style="width:70px"> CHF/kWh <i class="tip" data-tip="Prix de la batterie installée par kWh, onduleur compris. Par défaut : Pylontech A1000-OMNI du fichier vert (185'969 CHF pour 1'000 kWh). Les coûts fixes de chaque variante (raccordement, génie civil V3…) sont ajoutés pour retrouver le prix de la batterie de l'offre.">i</i></label>
+    <label class="inl">Puissance = <input type="number" id="bs_ratio" step="0.05" style="width:60px"> × capacité <i class="tip" data-tip="0,5 = une batterie de 1'000 kWh a 500 kW (Pylontech A1000-OMNI, Sungrow ST255CS).">i</i></label>
+    <label class="inl">Jusqu'à <input type="number" id="bs_max" step="100" style="width:70px"> kWh, pas de <input type="number" id="bs_step" step="50" style="width:60px"> kWh</label>
+    <button class="btn sm" id="bsGo">Recalculer</button>
+    <span class="cap" id="bsStatus" style="margin:0 0 12px"></span>
+  </div>
+  <div class="kpirow" id="bsSum" style="grid-template-columns:repeat(3,1fr)"></div>
+  <div class="box"><h3>Gain net de la batterie selon sa taille <i class="tip" data-tip="Liquidités cumulées sur la durée choisie avec une batterie de cette taille, moins celles sans batterie. Tout est compté : prix de la batterie, intérêts, assurance, maintenance, gain de pointe, achats évités, revente perdue et énergie réactive. Le losange marque la taille la plus rentable.">i</i></h3><canvas id="bsGain" height="85"></canvas><p class="cap">Au-dessus de zéro, la batterie rapporte plus qu'elle ne coûte. Le sommet de chaque courbe est la taille optimale. Suit le scénario de peak shaving choisi en haut.</p></div>
+  <div class="box" id="bsTxt"></div>
+  <div class="grid2">
+    <div class="box"><h3>D'où vient le gain, selon la taille <i class="tip" data-tip="Différence avec la même variante sans batterie, 1re année. La pointe facturée fait l'essentiel ; l'autoconsommation ajoutée est presque compensée par la revente perdue et l'énergie réactive. La ligne pointillée est le coût annuel moyen de la batterie.">i</i></h3><canvas id="bsPost" height="170"></canvas></div>
+    <div class="box"><h3>Ce que rapporte chaque tranche ajoutée <i class="tip" data-tip="Gain annuel de chaque tranche supplémentaire de capacité. Vert : la tranche rapporte plus que son coût annuel (amortissement sur la durée + assurance et maintenance). Rouge : elle coûte plus qu'elle ne rapporte.">i</i></h3><canvas id="bsMarg" height="170"></canvas></div>
+  </div>
+  <div class="box"><h3>Utilisation de la batterie <i class="tip" data-tip="Nombre de mois où le seuil de pointe tient, et nombre de cycles complets par an. Plus de cycles = vieillissement plus rapide.">i</i></h3><canvas id="bsUse" height="70"></canvas></div>
+  <div class="box"><h3>Détail par taille</h3><div class="tablewrap"><table id="bsTbl"></table></div></div>
+
+  <h2 class="sech">Configurateur : puissance, répartition RU / RUE et batterie</h2>
+  <div class="box">
+    <div class="row" style="gap:10px"><span class="cap" style="margin:0 0 12px">Partir de :</span><div class="seg" id="cfPreset"><button data-i="0">V1</button><button data-i="1">V2</button><button data-i="2">V3</button></div><span class="cap" id="cfStatus" style="margin:0 0 12px"></span></div>
+    <div class="sliders">
+      <label><span>Puissance totale <i class="tip" data-tip="Puissance de toute l'installation. La toiture du photomontage permet 4'200,8 kWc (8'573 modules).">i</i></span><input type="range" id="cf_kwc" min="500" max="4250" step="50"><b id="cfKwcV"></b></label>
+      <label><span>Répartition <i class="tip" data-tip="Part en autoconsommation (rétribution unique RU, alimente l'usine et la batterie) ; le reste est une installation séparée en injection totale (RUE), entièrement revendue.">i</i></span><input type="range" id="cf_ac" min="0" max="100" step="5"><b id="cfAcV"></b></label>
+      <label><span>Batterie <i class="tip" data-tip="Uniquement sur la partie autoconsommation. Puissance = rapport choisi plus haut × capacité. Prix : même calcul que le graphique des tailles.">i</i></span><input type="range" id="cf_bat" min="0" max="1500" step="50"><b id="cfBatV"></b></label>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="sw"><input type="checkbox" id="cf_ps"><span class="k"></span>Peak shaving</label>
+      <label class="inl">Production autoconso <input type="number" id="cf_yAc" style="width:70px"> kWh/kWc <i class="tip" data-tip="Production annuelle par kWc de la partie autoconsommation. Par défaut : V2 (4'576'824 kWh pour 4'200,8 kWc = 1'090).">i</i></label>
+      <label class="inl">Injection totale <input type="number" id="cf_yRue" style="width:70px"> kWh/kWc <i class="tip" data-tip="Par défaut : partie RUE de V1 (3'534'250 kWh pour 3'195,3 kWc = 1'106).">i</i></label>
+      <label class="inl">Prix PV <input type="number" id="cf_pKwc" style="width:70px"> CHF/kWc <i class="tip" data-tip="Prix de l'installation sans batterie, par kWc. Par défaut : V2 sans batterie (3'077'576 CHF / 4'200,8 kWc ≈ 732).">i</i></label>
+    </div>
+    <div id="cfWarn"></div>
+    <div class="kpirow" id="cfKpi" style="grid-template-columns:repeat(4,1fr)"></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><h3>Liquidités selon la répartition RU / RUE <i class="tip" data-tip="Même puissance totale et même batterie, en faisant varier la part en autoconsommation. Le gros point est la répartition choisie.">i</i></h3><canvas id="cfCurve" height="160"></canvas><p class="cap" id="cfCurveTxt"></p></div>
+    <div class="box"><h3>Comparaison avec les variantes</h3><div class="tablewrap"><table id="cfCmp"></table></div><p class="cap">Mêmes paramètres et même scénario de peak shaving que le reste du simulateur.</p></div>
+  </div>
 </section>
 
 <!-- DETAIL -->
@@ -146,6 +190,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261119m"></script>
+<script src="app.js?v=20261119q"></script>
 </body>
 </html>

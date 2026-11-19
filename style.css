@@ -186,3 +186,7 @@ table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;
   #report .pmpage{break-before:page}#report .pmpage img{width:100%;display:block;margin-top:6px}
   #report .pmpage + .xlpage{break-before:page}
 }
+.sech{font-size:16px;margin:22px 0 10px;color:var(--acc)}
+.sliders{display:grid;gap:10px}.sliders label{display:grid;grid-template-columns:150px 1fr 470px;align-items:center;gap:12px;font-size:13px}
+.sliders input[type=range]{width:100%;accent-color:#1c3d5a}.sliders b{font-size:13px}
+@media (max-width:900px){.sliders label{grid-template-columns:1fr}}

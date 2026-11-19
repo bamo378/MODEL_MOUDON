@@ -225,7 +225,7 @@ const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.pa
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -617,6 +617,170 @@ function bindTips(root){
     t.onmouseleave = () => tipbox.style.opacity = 0;
   });
 }
+
+
+/* ---------------- Taille de batterie optimale ---------------- */
+let bsIdx = 1, bsRun = 0, bsData = null;
+const BS = {perKwh: 186, ratio: 0.5, max: 1500, step: 100};
+function bsFixed(v){ return Math.max(0, v.batReduc - BS.perKwh*v.batKwh); } // coûts fixes de la batterie actuelle (raccordement, génie civil…)
+function bsCost(v, kwh){ return kwh > 0 ? bsFixed(v) + BS.perKwh*kwh : 0; }
+function bsSizes(){ const a = []; for (let k = 0; k <= BS.max + 1e-9; k += BS.step) a.push(Math.round(k)); return a; }
+function bsVariant(v, kwh){
+  const c = bsCost(v, kwh), base = v.price - (v.batOn ? v.batReduc : 0) + (v.batOn ? 0 : 0);
+  // prix sans batterie = prix de l'offre − batterie actuelle ; on ajoute le coût de la taille testée
+  const priceNoBat = v.price - v.batReduc;
+  return Object.assign({}, v, {batOn: kwh > 0, psOn: true, batKwh: kwh, batKw: Math.round(kwh*BS.ratio), batReduc: c, price: priceNoBat + c});
+}
+function bsKey(){ return JSON.stringify([V.map(v=>[v.prodAc,v.prodRue,v.acKwc,v.rueKwc,v.price,v.batReduc,v.batKwh,v.acPrice,v.wkFree]), G, BS]); }
+function renderBS(force){
+  segs('bsSel', bsIdx, i => { bsIdx = i; drawBS(); });
+  ['perKwh','ratio','max','step'].forEach(k => { const el = document.getElementById('bs_' + k); if (el && document.activeElement !== el) el.value = BS[k]; });
+  const key = bsKey();
+  if (bsData && bsData.key === key){ drawBS(); return; }
+  if (!force && !document.getElementById('tab-bat').classList.contains('active')) return;
+  if (!bsData || bsData.key !== key) renderCF();
+  const run = ++bsRun, sizes = bsSizes(), jobs = [];
+  V.forEach((v,i) => sizes.forEach(k => jobs.push([i,k])));
+  const res = V.map(() => []);
+  let n = 0;
+  const st = document.getElementById('bsStatus');
+  const step = () => {
+    if (run !== bsRun) return;
+    const t0 = performance.now();
+    while (n < jobs.length && performance.now() - t0 < 120){
+      const [i,k] = jobs[n++], v = V[i], vv = bsVariant(v, k), r = compute(vv), H = r.rows.length;
+      const sh = r.r; let ps = 0, ac = 0;
+      if (k > 0) for (let q = 0; q < YEAR.n; q++){ if (sh.kind[q] === 3) ps += sh.dis15[q]*DT; else if (sh.kind[q] === 4) ac += sh.dis15[q]*DT; }
+      res[i].push({k, kw: vv.batKw, cost: vv.batReduc, cum: r.rows[H-1].cum, cum20: r.rows[Math.min(19,H-1)].cum, y1: r.year1, sPeak: r.sPeak, sEnergy: r.sEnergy, sExp: r.sExp, sQ: r.sQ,
+        taux: r.tauxAc, cyc: k > 0 ? sh.chg/(k*G.usable) : 0, held: k > 0 ? r.peakMonths.filter(p => p <= r.T + 5).length : 0, T: k > 0 ? r.T : null, ps, ac, pay: r.payback});
+    }
+    st.textContent = n < jobs.length ? `Calcul ${Math.round(n/jobs.length*100)} % (${n}/${jobs.length} cas)…` : `${jobs.length} cas calculés · scénario ${scen().t}`;
+    if (n < jobs.length) setTimeout(step, 0);
+    else { bsData = {key, res, H: Math.round(G.horizon)}; drawBS(); }
+  };
+  st.textContent = 'Calcul…'; setTimeout(step, 0);
+}
+function bsBest(a){ return a.reduce((b,x) => x.cum > b.cum ? x : b, a[0]); }
+function drawBS(){
+  if (!bsData) return;
+  const res = bsData.res, H = bsData.H, sizes = res[0].map(x => x.k), lab = sizes.map(k => fN(k));
+  const d0 = res.map(a => a[0].cum);
+  // 1) gain net de la batterie sur la durée, par variante
+  chart('bsGain', {type:'line', data:{labels:lab, datasets:res.map((a,i)=>({label:V[i].name, data:a.map(x=>x.cum - d0[i]), borderColor:COLORS[i], backgroundColor:COLORS[i], borderWidth:2.5, pointRadius:a.map(x=> x === bsBest(a) ? 6 : 2), pointStyle:a.map(x=> x === bsBest(a) ? 'rectRot' : 'circle')}))},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{title:c=>`Batterie ${c[0].label} kWh / ${fN(+sizes[c[0].dataIndex]*BS.ratio)} kW`, label:c=>`${c.dataset.label} : ${c.parsed.y>=0?'+':''}${fCHF(c.parsed.y)} CHF`}}},
+      scales:{x:{title:{display:true,text:'Capacité de la batterie (kWh)'}, grid:{display:false}}, y:{...gridY, title:{display:true,text:`CHF sur ${H} ans vs sans batterie`}}}}});
+  const a = res[bsIdx], v = V[bsIdx], b = bsBest(a), base = a[0];
+  // 2) gains annuels par poste dus à la batterie
+  chart('bsPost', {type:'bar', data:{labels:lab, datasets:[
+      {label:'Pointe facturée', data:a.map(x=>x.sPeak-base.sPeak), backgroundColor:'#c0392b', stack:'s'},
+      {label:'Achats évités', data:a.map(x=>x.sEnergy-base.sEnergy), backgroundColor:'#2a78d6', stack:'s'},
+      {label:'Revente perdue', data:a.map(x=>x.sExp-base.sExp), backgroundColor:'#eda100', stack:'s'},
+      {label:'Énergie réactive', data:a.map(x=>x.sQ-base.sQ), backgroundColor:'#8c8b86', stack:'s'},
+      {type:'line', label:'Coût annuel de la batterie (amortissement sur la durée + assurance/maintenance)', data:a.map(x=>x.cost/H + x.cost*(G.assur+G.maint)), borderColor:'#1a1a19', borderDash:[5,4], borderWidth:2, pointRadius:0}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label} : ${fCHF(c.parsed.y)} CHF`}}},
+      scales:{x:{stacked:true, title:{display:true,text:'Capacité de la batterie (kWh)'}, grid:{display:false}}, y:{stacked:true, ...gridY, title:{display:true,text:'CHF par an (1re année)'}}}}});
+  // 3) utilisation : mois tenus, cycles
+  chart('bsUse', {type:'bar', data:{labels:lab, datasets:[
+      {label:'Mois où le seuil tient (sur 12)', data:a.map(x=>x.held), backgroundColor:'rgba(42,120,214,.75)', yAxisID:'y'},
+      {type:'line', label:'Cycles par an', data:a.map(x=>x.cyc), borderColor:'#1baf7a', borderWidth:2, pointRadius:2, yAxisID:'y1'}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}},
+      scales:{x:{title:{display:true,text:'Capacité de la batterie (kWh)'}, grid:{display:false}}, y:{...gridY, min:0, max:12, title:{display:true,text:'mois'}}, y1:{position:'right', min:0, grid:{display:false}, title:{display:true,text:'cycles / an'}}}}});
+  // 4) rendement marginal : ce que rapporte chaque tranche supplémentaire
+  chart('bsMarg', {type:'bar', data:{labels:lab.slice(1), datasets:[
+      {label:`Gain annuel de la tranche de ${fN(BS.step)} kWh`, data:a.slice(1).map((x,k)=> (x.y1 - a[k].y1)), backgroundColor:a.slice(1).map((x,k)=> (x.y1 - a[k].y1) >= (BS.perKwh*BS.step)*(1/H + G.assur + G.maint) ? 'rgba(27,175,122,.8)' : 'rgba(179,38,30,.7)')},
+      {type:'line', label:'Coût annuel de la tranche', data:a.slice(1).map(()=> BS.perKwh*BS.step*(1/H + G.assur + G.maint)), borderColor:'#1a1a19', borderDash:[5,4], borderWidth:2, pointRadius:0}]},
+    options:{animation:false, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label} : ${fCHF(c.parsed.y)} CHF/an`}}},
+      scales:{x:{title:{display:true,text:'Jusqu\'à (kWh)'}, grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF par an'}}}}});
+  // texte
+  const cur = a.reduce((p,x)=> Math.abs(x.k - v.batKwh) < Math.abs(p.k - v.batKwh) ? x : p, a[0]);
+  const gB = b.cum - base.cum, gC = cur.cum - base.cum;
+  document.getElementById('bsTxt').innerHTML = `
+    <p><b>${v.name} · scénario ${scen().t}.</b> ${b.k === 0 ? `<b>Sans batterie, c'est le plus rentable</b> : aucune taille testée ne rapporte plus qu'elle ne coûte sur ${H} ans.` :
+      `La taille la plus rentable est <b>${fN(b.k)} kWh / ${fN(b.kw)} kW</b> : <b>${gB>=0?'+':''}${fCHF(gB)} CHF</b> sur ${H} ans par rapport à sans batterie (coût ${fCHF(b.cost)} CHF, seuil ${fN(b.T)} kW tenu ${b.held} mois sur 12).`}</p>
+    <p>Batterie de l'offre (${fN(v.batKwh)} kWh) : ${gC>=0?'+':''}${fCHF(gC)} CHF sur ${H} ans${cur.k !== v.batKwh ? ` (valeur la plus proche testée : ${fN(cur.k)} kWh)` : ''}.</p>
+    <p class="cap">Chaque taille est simulée au quart d'heure avec son propre réglage de pilotage (seuil et réserve). Coût : ${fN(BS.perKwh)} CHF/kWh (Pylontech A1000-OMNI du fichier vert, onduleur compris) + ${fCHF(bsFixed(v))} CHF de coûts fixes propres à ${v.name.split(' · ')[0]}, pour retrouver le prix de la batterie de l'offre. Puissance = ${fN(BS.ratio,2)} × capacité. Les petites tailles ont surtout de la puissance qui manque, les grandes restent pleines une partie de l'année : au-delà de l'optimum, chaque tranche ajoutée rapporte moins qu'elle ne coûte (barres rouges du dernier graphique).</p>`;
+  document.getElementById('bsTbl').innerHTML = `<thead><tr><th>Capacité</th><th>Puissance</th><th>Coût batterie</th><th>Seuil</th><th>Mois tenus</th><th>Cycles/an</th><th>Gain pointe/an</th><th>Gain total 1re année</th><th>Liquidités ${H} ans</th><th>vs sans batterie</th></tr></thead><tbody>` +
+    a.map(x => `<tr class="${x===b?'hl':''}"><td>${fN(x.k)} kWh</td><td>${fN(x.kw)} kW</td><td>${fCHF(x.cost)}</td><td>${x.T?fN(x.T)+' kW':'–'}</td><td>${x.k?x.held:'–'}</td><td>${fN(x.cyc)}</td><td>${fCHF(x.sPeak-base.sPeak)}</td><td>${fCHF(x.y1-base.y1)}</td><td>${fCHF(x.cum)}</td><td class="${x.cum-base.cum<0?'neg':''}">${x.cum-base.cum>=0?'+':''}${fCHF(x.cum-base.cum)}</td></tr>`).join('') + '</tbody>';
+  const sum = document.getElementById('bsSum');
+  sum.innerHTML = res.map((aa,i)=>{ const bb = bsBest(aa); return `<div class="kpi" style="border-top:4px solid ${COLORS[i]}"><b>${bb.k ? fN(bb.k)+' kWh / '+fN(bb.kw)+' kW' : 'sans batterie'}</b><span>${V[i].name} · ${bb.k ? (bb.cum-aa[0].cum>=0?'+':'')+fCHF(bb.cum-aa[0].cum)+' CHF sur '+H+' ans' : 'aucune taille rentable'}</span></div>`; }).join('');
+}
+['perKwh','ratio','max','step'].forEach(k => { const el = document.getElementById('bs_' + k); if (el) el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) BS[k] = x; renderBS(true); }; });
+document.getElementById('bsGo').onclick = () => { bsData = null; renderBS(true); };
+
+
+/* ---------------- Configurateur : puissance, répartition RU / RUE, batterie ---------------- */
+const CF = {kwc: 4200, ac: 25, bat: 500, ps: true, yAc: 1090, yRue: 1106, pKwc: 732, kwOv: null, fix: null, base: 1};
+let cfRun = 0;
+function cfVariant(o){
+  const acKwc = o.kwc*o.ac/100, rueKwc = o.kwc - acKwc, bat = o.bat, bc = bat > 0 ? (o.fix ?? bsFixed(V[1])) + BS.perKwh*bat : 0;
+  return Object.assign({}, V[o.base ?? 1], {name:'Configuration libre', acKwc, rueKwc, prodAc: acKwc*o.yAc, prodRue: rueKwc*o.yRue,
+    price: o.kwc*o.pKwc + bc, batOn: bat > 0, psOn: o.ps, batKwh: bat, batKw: o.kwOv ?? Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: false});
+}
+function cfLabels(){
+  const acK = CF.kwc*CF.ac/100;
+  document.getElementById('cfKwcV').textContent = fN(CF.kwc) + ' kWc';
+  document.getElementById('cfAcV').textContent = `${fN(CF.ac)} % autoconsommation (${fN(acK)} kWc) · ${fN(100-CF.ac)} % injection totale (${fN(CF.kwc-acK)} kWc)`;
+  document.getElementById('cfBatV').textContent = CF.bat > 0 ? `${fN(CF.bat)} kWh / ${fN(CF.kwOv ?? CF.bat*BS.ratio)} kW` : 'sans batterie';
+}
+function renderCF(){
+  ['kwc','ac','bat'].forEach(k => { const el = document.getElementById('cf_' + k); if (document.activeElement !== el) el.value = CF[k]; });
+  ['yAc','yRue','pKwc'].forEach(k => { const el = document.getElementById('cf_' + k); if (document.activeElement !== el) el.value = CF[k]; });
+  document.getElementById('cf_ps').checked = CF.ps;
+  cfLabels();
+  const run = ++cfRun, st = document.getElementById('cfStatus'); st.textContent = 'Calcul…';
+  setTimeout(() => {
+    if (run !== cfRun) return;
+    const vv = cfVariant(CF), r = compute(vv), H = r.rows.length, r0 = compute(cfVariant(Object.assign({}, CF, {bat:0})));
+    const warn = [];
+    if (vv.rueKwc > 0 && vv.rueKwc < 150) warn.push('Injection totale sous 150 kWc : pas d\'enchère RUE possible, compter la RU ordinaire.');
+    if (vv.rueKwc >= 150 && G.rueOn) warn.push(`RUE comptée à ${fN(G.rueRate)} CHF/kWc : montant à offrir à l'enchère Pronovo, non garanti.`);
+    if (CF.kwc > 4201) warn.push('Au-delà de 4\'200 kWc, la toiture du photomontage ne suffit plus.');
+    const k = [[fCHF(r.price)+' CHF','Prix de l\'installation'+(CF.bat?' (batterie comprise)':'')], [fCHF(r.sub)+' CHF','RU + RUE'], [fCHF(r.year1)+' CHF','Recettes 1re année'],
+      [r.payback!=null ? fN(r.payback,1)+' ans' : '> '+H+' ans','Entièrement payée après'], [fCHF(r.rows[H-1].cum)+' CHF',`Liquidités à ${H} ans`],
+      [fN(r.tauxAc*100,1)+' %','Autoconsommation de la partie RU'], [(r.rows[H-1].cum - r0.rows[H-1].cum >= 0 ? '+' : '') + fCHF(r.rows[H-1].cum - r0.rows[H-1].cum)+' CHF',`Effet de la batterie sur ${H} ans`],
+      [fCHF(r.sPeak)+' CHF','Gain de pointe par an']];
+    document.getElementById('cfKpi').innerHTML = k.map(x=>`<div class="kpi"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('');
+    document.getElementById('cfWarn').innerHTML = warn.map(w=>`<p class="note-warn" style="margin:6px 0">${w}</p>`).join('');
+    // comparaison avec V1 V2 V3
+    document.getElementById('cfCmp').innerHTML = `<thead><tr><th></th><th>Configuration</th>${RES.map((x,i)=>`<th style="color:${COLORS[i]}">${x.v.name.split(' · ')[0]}</th>`).join('')}</tr></thead><tbody>` +
+      [['Autoconsommation (kWc)', x=>fN(x.v.acKwc)], ['Injection totale (kWc)', x=>fN(x.v.rueKwc)], ['Batterie', x=>x.hasBat?`${fN(x.v.batKwh)} kWh / ${fN(x.v.batKw)} kW`:'aucune'],
+       ['Prix (CHF)', x=>fCHF(x.price)], ['Recettes 1re année (CHF)', x=>fCHF(x.year1)], [`Liquidités à ${H} ans (CHF)`, x=>fCHF(x.rows[H-1].cum)], ['Payée après', x=>x.payback!=null?fN(x.payback,1)+' ans':'–']]
+      .map(([l,f])=>`<tr><td>${l}</td><td><b>${f(r)}</b></td>${RES.map(x=>`<td>${f(x)}</td>`).join('')}</tr>`).join('') + '</tbody>';
+    st.textContent = 'Calcul de la courbe de répartition…';
+    // courbe : liquidités selon la part en autoconsommation, avec et sans batterie
+    const parts = [0,10,20,30,40,50,60,70,80,90,100], with_ = [], without = [];
+    let n = 0;
+    const step = () => {
+      if (run !== cfRun) return;
+      const t0 = performance.now();
+      while (n < parts.length && performance.now() - t0 < 120){
+        const p = parts[n++];
+        with_.push(compute(cfVariant(Object.assign({}, CF, {ac:p}))).rows[H-1].cum);
+        without.push(compute(cfVariant(Object.assign({}, CF, {ac:p, bat:0}))).rows[H-1].cum);
+      }
+      if (n < parts.length){ setTimeout(step, 0); return; }
+      chart('cfCurve', {type:'line', data:{labels:parts.map(p=>p+' %'), datasets:[
+          {label:CF.bat ? `Avec batterie ${fN(CF.bat)} kWh` : 'Sans batterie', data:with_, borderColor:'#1c3d5a', borderWidth:2.5, pointRadius:parts.map(p=>p===Math.round(CF.ac/10)*10?6:2)},
+          ...(CF.bat ? [{label:'Sans batterie', data:without, borderColor:GREY, borderDash:[5,4], borderWidth:2, pointRadius:0}] : [])]},
+        options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label} : ${fCHF(c.parsed.y)} CHF`}}},
+          scales:{x:{title:{display:true,text:`Part de ${fN(CF.kwc)} kWc en autoconsommation (le reste en injection totale)`}, grid:{display:false}}, y:{...gridY, title:{display:true,text:`Liquidités à ${H} ans (CHF)`}}}}});
+      const bi = with_.indexOf(Math.max(...with_));
+      document.getElementById('cfCurveTxt').textContent = `Pour ${fN(CF.kwc)} kWc${CF.bat?` et une batterie de ${fN(CF.bat)} kWh`:''}, la répartition la plus rentable est ${parts[bi]} % en autoconsommation (${fN(CF.kwc*parts[bi]/100)} kWc) : ${fCHF(with_[bi])} CHF à ${H} ans. ` +
+        (G.rueOn ? `La RUE (${fN(G.rueRate)} CHF/kWc) pousse vers l'injection totale ; l'autoconsommation rapporte plus par kWh tant que l'usine consomme la production.` : 'RUE désactivée dans Paramètres : l\'injection totale ne reçoit que la RU ordinaire.');
+      st.textContent = `Scénario ${scen().t}`;
+    };
+    setTimeout(step, 0);
+  }, 30);
+}
+['kwc','ac','bat'].forEach(k => { const el = document.getElementById('cf_' + k);
+  el.oninput = () => { CF[k] = +el.value; if (k === 'bat') CF.kwOv = null; cfLabels(); };
+  el.onchange = () => { CF[k] = +el.value; if (k === 'bat') CF.kwOv = null; renderCF(); }; });
+['yAc','yRue','pKwc'].forEach(k => { const el = document.getElementById('cf_' + k); el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0){ CF[k] = x; renderCF(); } }; });
+document.getElementById('cf_ps').onchange = e => { CF.ps = e.target.checked; renderCF(); };
+document.querySelectorAll('#cfPreset button').forEach(b => b.onclick = () => { const i = +b.dataset.i, v = V[i];
+  const tot = v.acKwc + v.rueKwc;
+  CF.kwc = Math.round(tot); CF.ac = Math.round(v.acKwc/tot*100); CF.bat = v.batOn ? v.batKwh : 0; CF.kwOv = v.batOn ? v.batKw : null; CF.fix = bsFixed(v); CF.base = i;
+  CF.yAc = Math.round(v.prodAc/v.acKwc); if (v.rueKwc > 0) CF.yRue = Math.round(v.prodRue/v.rueKwc); CF.pKwc = Math.round((v.price - v.batReduc)/tot); renderCF(); });
 
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
