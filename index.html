@@ -23,6 +23,7 @@
 <nav class="tabs">
   <button class="tab active" data-tab="comp">Comparaison</button>
   <button class="tab" data-tab="flux">Flux financiers</button>
+  <button class="tab" data-tab="ps">Peak shaving</button>
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
   <span class="status" id="status"></span>
@@ -50,6 +51,25 @@
     <div class="box"><h3>Liquidités cumulées, investissement entièrement payé</h3><canvas id="chLiq"></canvas><p class="cap" id="liqTxt"></p></div>
   </div>
   <div class="box"><h3>Tableau des flux</h3><div class="tablewrap"><table id="tblFlux"></table></div></div>
+</section>
+
+<!-- PEAK SHAVING -->
+<section id="tab-ps" class="panel">
+  <div class="row">
+    <div class="seg" id="psSel"></div>
+    <div class="seg" id="psMode"><button data-m="day" class="on">Par jour</button><button data-m="month">Par mois</button></div>
+    <label class="inl" id="psDayL">Jour <input type="date" id="psDay" value="2026-01-07" min="2025-10-01" max="2026-09-30"></label>
+    <label class="inl" id="psMonthL" style="display:none">Mois <select id="psMonth"></select></label>
+    <button class="btn sm" id="psPrev">◀</button><button class="btn sm" id="psNext">▶</button>
+  </div>
+  <div class="kpirow" id="psKpi"></div>
+  <div class="box"><h3>Consommation, production et soutirage réseau <i class="tip" data-tip="Gris : consommation de l'usine. Rouge pointillé : consommation moins production, c'est-à-dire ce qui serait soutiré sans batterie. Bleu : ce qui est réellement soutiré au réseau. Noir pointillé : seuil de pointe visé par la batterie (il remonte si une pointe plus haute passe dans le mois).">i</i></h3><canvas id="psMain" height="95"></canvas><p class="cap">L'écart entre la courbe rouge et la courbe bleue au-dessus du seuil, c'est la pointe écrêtée par la batterie.</p></div>
+  <div class="box"><h3>Charge et décharge de la batterie <i class="tip" data-tip="Au-dessus de zéro : la batterie se charge (vert : avec le surplus solaire, gris : sur le réseau, sans créer de pointe). Sous zéro : elle se décharge (rouge : pour écrêter une pointe, bleu : pour couvrir la consommation avec l'énergie stockée).">i</i></h3><canvas id="psBat" height="70"></canvas><p class="cap">Vert : charge solaire · gris : charge réseau · rouge : décharge peak shaving · bleu : décharge autoconsommation.</p></div>
+  <div class="box"><h3>État de charge <i class="tip" data-tip="Énergie contenue dans la batterie. En semaine, la réserve est gardée pour les pointes ; le week-end, elle est libérée pour stocker le surplus.">i</i></h3><canvas id="psSoc" height="45"></canvas></div>
+  <div class="grid2">
+    <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas></div>
+    <div class="box"><h3>D'où vient l'énergie consommée <i class="tip" data-tip="Consommation de l'usine sur la période : couverte directement par le solaire, par la batterie, ou par le réseau.">i</i></h3><canvas id="psSrc" height="130"></canvas></div>
+  </div>
 </section>
 
 <!-- DETAIL -->

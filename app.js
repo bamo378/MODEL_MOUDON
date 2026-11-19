@@ -90,25 +90,28 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
   const peak = new Float64Array(nm), imp = new Float64Array(nm);
   let soc = cap*0.5, T = mode ? Infinity : T0, cur = -1, exp = 0, dis = 0, chg = 0, gchg = 0;
   const grid = keep ? new Float32Array(n) : null, socA = keep ? new Float32Array(n) : null;
+  const cA = keep ? new Float32Array(n) : null, dA = keep ? new Float32Array(n) : null, kA = keep ? new Uint8Array(n) : null, TA = keep ? new Float32Array(n) : null;
   for (let i = 0; i < n; i++){
     if (S.m[i] !== cur){ cur = S.m[i]; T = mode ? Infinity : T0; }
     const x = S.load[i] - prod*S.pv[i];
-    let c = 0, d = 0;
+    let c = 0, d = 0, kind = 0; // kind : 1 charge solaire, 2 charge réseau, 3 décharge pointe, 4 décharge autoconso
+    if (keep) TA[i] = T;
     if (cap > 0){
       const res = (S.wk[i] || mode) ? 0 : R*cap;
-      if (x < 0) c = Math.min(-x, pw, (cap-soc)/(eta*DT));
-      else if (x > T) d = Math.min(x-T, pw, soc*eta/DT);
-      else if (soc > res) d = Math.min(x, pw, (soc-res)*eta/DT);
-      else if (soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; }
+      if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
+      else if (x > T){ d = Math.min(x-T, pw, soc*eta/DT); kind = 3; }
+      else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
+      else if (soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; kind = 2; }
       soc += c*eta*DT - d/eta*DT;
     }
+    if (keep){ cA[i] = c; dA[i] = d; kA[i] = kind; }
     const y = x + c - d;
     if (y > 0){ imp[cur] += y*DT; if (y > peak[cur]) peak[cur] = y; if (y > T) T = y; }
     else exp -= y*DT;
     chg += c*DT; dis += d*DT;
     if (keep){ grid[i] = y; socA[i] = soc; }
   }
-  return {peak, imp, exp, dis, chg, gchg, grid, soc: socA};
+  return {peak, imp, exp, dis, chg, gchg, grid, soc: socA, ch: cA, dis15: dA, kind: kA, thr: TA};
 }
 function annualCost(r, ac, Q){
   let e = 0, p = 0, q = 0;
@@ -194,13 +197,13 @@ Chart.defaults.font.size = 11.5;
 Chart.defaults.color = '#5d5c58';
 const CH = {};
 function chart(id, cfg){ if (CH[id]) { CH[id].data = cfg.data; CH[id].options = cfg.options; CH[id].update('none'); return; } CH[id] = new Chart(document.getElementById(id), cfg); }
-const gridY = {grid:{color:'#ecebe6'}, ticks:{callback: v => fN(v)}};
+const gridY = {grid:{color:'#ecebe6'}, ticks:{callback: v => fN(v, (Math.abs(v) < 10 && v % 1) ? 1 : 0)}};
 const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.parsed.y)} `}};
 
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderDetail();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -302,6 +305,96 @@ function renderDetail(){
     options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
   document.getElementById('tblMonth').innerHTML = '<thead><tr><th>Mois</th><th>Pointe sans PV (kW)</th>' + RES.map((x,i)=>`<th style="color:${COLORS[i]}">Pointe ${x.v.name.split(' · ')[0]} (kW)</th>`).join('') + RES.map((x,i)=>`<th style="color:${COLORS[i]}">Soutirage ${x.v.name.split(' · ')[0]} (MWh)</th>`).join('') + '</tr></thead><tbody>' +
     MONTHS.map((m,k)=>`<tr><td>${m}</td><td>${fN(BASE.peak[k])}</td>${RES.map(x=>`<td>${fN(x.peakMonths[k])}</td>`).join('')}${RES.map(x=>`<td>${fN(x.impMonths[k]/1000)}</td>`).join('')}</tr>`).join('') + '</tbody>';
+}
+
+/* ---------------- Peak shaving ---------------- */
+let psIdx = 0, psMode = 'day';
+(function initPS(){
+  const sel = document.getElementById('psMonth');
+  sel.innerHTML = MONTHS.map((m,k)=>`<option value="${k}">${m}</option>`).join('');
+  sel.value = '3';
+  sel.onchange = () => renderPS();
+  document.getElementById('psDay').onchange = () => renderPS();
+  document.querySelectorAll('#psMode button').forEach(b => b.onclick = () => {
+    psMode = b.dataset.m;
+    document.querySelectorAll('#psMode button').forEach(x => x.classList.toggle('on', x === b));
+    document.getElementById('psDayL').style.display = psMode === 'day' ? '' : 'none';
+    document.getElementById('psMonthL').style.display = psMode === 'month' ? '' : 'none';
+    renderPS();
+  });
+  const step = s => {
+    if (psMode === 'month'){ sel.value = String(Math.max(0, Math.min(11, +sel.value + s))); }
+    else { const el = document.getElementById('psDay'), d = new Date(el.value + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + s);
+      const iso = d.toISOString().slice(0,10); if (iso >= el.min && iso <= el.max) el.value = iso; }
+    renderPS();
+  };
+  document.getElementById('psPrev').onclick = () => step(-1);
+  document.getElementById('psNext').onclick = () => step(1);
+})();
+function renderPS(){
+  segs('psSel', psIdx, i => { psIdx = i; renderPS(); });
+  const r = RES[psIdx], S = YEAR, sim_ = r.r;
+  let i0, i1;
+  if (psMode === 'day'){
+    const dv = document.getElementById('psDay').value || '2026-01-07';
+    i0 = Math.round((Date.UTC(+dv.slice(0,4), +dv.slice(5,7)-1, +dv.slice(8,10)) - S.t0)/900000);
+    i0 = Math.max(0, Math.min(S.n - 96, i0)); i1 = i0 + 96;
+  } else {
+    const mk = +document.getElementById('psMonth').value;
+    i0 = S.m.indexOf(mk); i1 = i0; while (i1 < S.n && S.m[i1] === mk) i1++;
+  }
+  const days = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+  const lab = [], ld = [], pv = [], net = [], gr = [], thr = [], cS = [], cG = [], dP = [], dA = [], so = [];
+  let E = {load:0, pv:0, direct:0, pvBat:0, pvSold:0, gridBat:0, batPeak:0, batAc:0, imp:0, maxNet:0, maxImp:0, hours:0};
+  const hasBat = r.hasBat;
+  for (let i = i0; i < i1; i++){
+    const d = new Date(S.t0 + i*900000);
+    const hh = String(d.getUTCHours()).padStart(2,'0') + ':' + String(d.getUTCMinutes()).padStart(2,'0');
+    lab.push(psMode === 'day' ? hh : `${days[d.getUTCDay()]} ${d.getUTCDate()} ${hh}`);
+    const L = S.load[i], P = r.v.prodAc*S.pv[i], x = L - P, y = sim_.grid[i];
+    const c = sim_.ch[i], dd = sim_.dis15[i], k = sim_.kind[i];
+    ld.push(L); pv.push(P); net.push(Math.max(x,0)); gr.push(Math.max(y,0)); thr.push(hasBat && r.mode===0 && isFinite(sim_.thr[i]) ? sim_.thr[i] : null);
+    cS.push(k===1 ? c : 0); cG.push(k===2 ? c : 0); dP.push(k===3 ? -dd : 0); dA.push(k===4 ? -dd : 0); so.push(sim_.soc[i]);
+    E.load += L*DT; E.pv += P*DT; E.direct += Math.min(L,P)*DT;
+    if (k===1) E.pvBat += c*DT; if (k===2) E.gridBat += c*DT; if (k===3) E.batPeak += dd*DT; if (k===4) E.batAc += dd*DT;
+    E.pvSold += Math.max(-y,0)*DT; E.imp += Math.max(y,0)*DT;
+    E.maxNet = Math.max(E.maxNet, x); E.maxImp = Math.max(E.maxImp, y);
+    if (k===3 && dd > 0) E.hours += DT;
+  }
+  const cut = E.maxNet - E.maxImp;
+  const kp = [
+    [fN(E.maxNet)+' kW', 'Pointe sans batterie', 'Plus forte puissance qui serait soutirée avec le solaire seul sur la période.'],
+    [fN(E.maxImp)+' kW', 'Pointe réelle soutirée', 'Plus forte puissance réellement soutirée au réseau, batterie comprise.'],
+    [fN(cut)+' kW', 'Pointe écrêtée', 'Écart entre les deux pointes. Facturé au tarif de puissance quand c\'est la pointe du mois.'],
+    [psMode==='month' ? fCHF(cut*G.puiss)+' CHF' : fN(E.hours,1)+' h', psMode==='month' ? 'Économie de puissance du mois' : 'Durée d\'écrêtage', psMode==='month' ? 'kW écrêtés × tarif de puissance.' : 'Temps pendant lequel la batterie a écrêté une pointe ce jour-là.'],
+    [fN(E.imp/1000,1)+' MWh', 'Soutiré au réseau', 'Énergie achetée au réseau sur la période, recharge de la batterie comprise ('+fN(E.gridBat/1000,1)+' MWh).'],
+    [fN(E.pvSold/1000,1)+' MWh', 'Surplus revendu', 'Production solaire que ni l\'usine ni la batterie n\'ont pu utiliser.']];
+  document.getElementById('psKpi').innerHTML = kp.map(k=>`<div class="kpi"><b>${k[0]}</b><span>${k[1]} <i class="tip" data-tip="${k[2]}">i</i></span></div>`).join('');
+  bindTips(document.getElementById('psKpi'));
+  const tick = psMode === 'day'
+    ? {autoSkip:false, maxRotation:0, callback:(v,i)=> i%8===0 ? lab[i] : ''}
+    : {autoSkip:false, maxRotation:0, callback:(v,i)=> (i%96===0 && (i/96)%2===0) ? lab[i].split(' ').slice(0,2).join(' ') : ''};
+  const xax = {grid:{display:false}, ticks:tick};
+  const thin = psMode === 'day' ? 1.8 : 1.1;
+  chart('psMain', {type:'line', data:{labels:lab, datasets:[
+      {label:'Consommation', data:ld, borderColor:GREY, borderWidth:thin, pointRadius:0},
+      {label:'Production solaire', data:pv, borderColor:'#eda100', borderWidth:thin, pointRadius:0},
+      {label:'Soutirage sans batterie', data:net, borderColor:'#c0392b', borderDash:[4,3], borderWidth:thin, pointRadius:0},
+      {label:'Soutirage réel', data:gr, borderColor:COLORS[psIdx], borderWidth:thin+0.4, pointRadius:0},
+      {label:'Seuil de pointe', data:thr, borderColor:'#1a1a19', borderDash:[2,3], borderWidth:1, pointRadius:0, spanGaps:true}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>c.parsed.y===null?'':`${c.dataset.label}: ${fN(c.parsed.y)} kW`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kW'}}}}});
+  chart('psBat', {type:'bar', data:{labels:lab, datasets:[
+      {label:'Charge solaire', data:cS, backgroundColor:'#1baf7a', stack:'s'},
+      {label:'Charge réseau', data:cG, backgroundColor:'#8c8b86', stack:'s'},
+      {label:'Décharge peak shaving', data:dP, backgroundColor:'#c0392b', stack:'s'},
+      {label:'Décharge autoconsommation', data:dA, backgroundColor:'#2a78d6', stack:'s'}]},
+    options:{animation:false, barPercentage:1, categoryPercentage:1, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{filter:c=>c.parsed.y!==0, callbacks:{label:c=>`${c.dataset.label}: ${fN(Math.abs(c.parsed.y))} kW`}}}, scales:{x:{...xax, stacked:true}, y:{...gridY, stacked:true, title:{display:true,text:'kW'}}}}});
+  chart('psSoc', {type:'line', data:{labels:lab, datasets:[{label:'État de charge', data:so, borderColor:'#1baf7a', backgroundColor:'rgba(27,175,122,.12)', fill:true, borderWidth:1.5, pointRadius:0}]},
+    options:{animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${fN(c.parsed.y)} kWh`}}}, scales:{x:xax, y:{...gridY, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
+  const hb = (id, parts, total) => chart(id, {type:'bar', data:{labels:[''], datasets: parts.map(p=>({label:`${p[0]} : ${fN(p[1]/1000,1)} MWh (${total?fN(p[1]/total*100):0} %)`, data:[p[1]/1000], backgroundColor:p[2]}))},
+    options:{indexAxis:'y', animation:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label}}}, scales:{x:{stacked:true, ...gridY, title:{display:true,text:'MWh'}}, y:{stacked:true, grid:{display:false}}}}});
+  hb('psUse', [['Utilisée directement', E.direct, '#2a78d6'], ['Stockée dans la batterie', E.pvBat, '#1baf7a'], ['Revendue', E.pvSold, '#eda100']], E.pv);
+  hb('psSrc', [['Solaire direct', E.direct, '#eda100'], ['Batterie (pointes)', E.batPeak, '#c0392b'], ['Batterie (autoconso)', E.batAc, '#1baf7a'], ['Réseau', E.load - E.direct - E.batPeak - E.batAc, '#8c8b86']], E.load);
 }
 
 /* ---------------- Paramètres ---------------- */

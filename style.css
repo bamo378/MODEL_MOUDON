@@ -54,4 +54,9 @@ tr.hl td{font-weight:700}
 .inl input{font:inherit;padding:4px 6px}
 .btn{border:1px solid var(--acc);background:#fff;color:var(--acc);padding:7px 14px;border-radius:6px;cursor:pointer;font:inherit}
 .neg{color:#b3261e}
+.btn.sm{padding:5px 10px;margin-bottom:12px}
+.inl select{font:inherit;padding:4px 6px}
+.kpirow{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+.kpirow .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+@media (max-width:900px){.kpirow{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:900px){.cards,.grid2{grid-template-columns:1fr}main{padding:12px 16px}.top{padding:12px 16px}}
