@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model SA Moudon – Simulateur PV</title>
+<link rel="stylesheet" href="style.css?v=20261119g">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="../data.js?v=20261119g"></script>
+<script src="../costs.js?v=20261119g"></script>
+</head>
+<body>
+<div class="vsw"><span>Version du site :</span><a class="on" href="./">19.11 · 14h00</a><a href="../">Actuelle</a></div>
+<header class="top">
+  <div class="brand">
+    <img src="../logo-model.png" alt="Model" class="logo-model">
+    <div class="titles">
+      <h1>Installation photovoltaïque, Moudon</h1>
+      <p>Comparaison des variantes V1, V2 et V3 · simulation au quart d'heure sur la courbe de charge réelle du <b>01.10.2025 au 30.09.2026</b> <i class="tip" data-tip="Consommation : courbe de charge Romande Energie au quart d'heure du 01.10.2025 au 30.09.2026 (12 mois). Réglage automatique du pilotage de la batterie : courbe du 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes, réparties au quart d'heure.">i</i></p>
+    </div>
+  </div>
+  <img src="../logo-soleol.png" alt="Soleol Energy Systems" class="logo-soleol">
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="comp">Comparaison</button>
+  <button class="tab" data-tab="flux">Flux financiers</button>
+  <button class="tab" data-tab="ps">Peak shaving</button>
+  <button class="tab" data-tab="detail">Détail 15 min</button>
+  <button class="tab" data-tab="param">Paramètres</button>
+  <button class="tab" data-tab="act">Résumé court investissement</button>
+  <button class="tab" data-tab="vert">Fichier Vert</button>
+  <button class="tab" data-tab="fip">Flux Inv. propre</button>
+  <span class="status" id="status"></span>
+  <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
+</nav>
+
+<main>
+<!-- COMPARAISON -->
+<section id="tab-comp" class="panel active">
+  <div class="cards" id="cards"></div>
+  <div class="best" id="best"></div>
+  <div class="grid2">
+    <div class="box"><h3>Liquidités cumulées <i class="tip" data-tip="Argent disponible chaque année après assurance, maintenance, intérêts et remboursement complet de la dette, cumulé. Même logique que les fichiers de flux Soleol : toutes les liquidités remboursent d'abord l'hypothèque.">i</i></h3><canvas id="chCum"></canvas><p class="cap">Une courbe qui monte tôt = installation payée tôt. La hauteur finale = argent laissé au client.</p></div>
+    <div class="box"><h3>Gain net actualisé <i class="tip" data-tip="Somme des gains annuels actualisés au taux choisi, plus la subvention, moins le prix de l'offre. Plus haut = plus rentable sur la durée.">i</i></h3><canvas id="chNpv"></canvas><p class="cap">Valeur aujourd'hui de tout ce que la variante rapporte, investissement déduit.</p></div>
+    <div class="box"><h3>Pointe facturée par mois <i class="tip" data-tip="Puissance maximale soutirée au réseau chaque mois, facturée au tarif de puissance. Le peak shaving de la batterie la réduit.">i</i></h3><canvas id="chPeak"></canvas><p class="cap">Gris : sans PV. Plus la courbe est basse, plus la facture de puissance baisse.</p></div>
+    <div class="box"><h3>Où va la production <i class="tip" data-tip="Autoconsommé : utilisé par l'usine (directement ou via la batterie). Surplus : part autoconsommation revendue. Injection totale : installation RUE séparée, tout est revendu.">i</i></h3><canvas id="chEnergy"></canvas><p class="cap">MWh par an, 1re année.</p></div>
+  </div>
+  <div class="box"><h3>Tableau comparatif</h3><div class="tablewrap"><table id="tblComp"></table></div></div>
+</section>
+
+<!-- FLUX -->
+<section id="tab-flux" class="panel">
+  <div class="seg" id="fluxSel"></div>
+  <div class="grid2">
+    <div class="box"><h3>Cash-flow annuel <i class="tip" data-tip="Liquidités dégagées chaque année. Les premières années, tout sert à rembourser intégralement la dette : le cash-flow est alors nul.">i</i></h3><canvas id="chCf"></canvas><p class="cap">Toutes les liquidités dégagées les premières années remboursent intégralement la dette.</p></div>
+    <div class="box"><h3>Liquidités cumulées, investissement entièrement payé</h3><canvas id="chLiq"></canvas><p class="cap" id="liqTxt"></p></div>
+  </div>
+  <div class="box"><h3>Tableau des flux</h3><div class="tablewrap"><table id="tblFlux"></table></div></div>
+</section>
+
+<!-- PEAK SHAVING -->
+<section id="tab-ps" class="panel">
+  <div class="row">
+    <div class="seg" id="psSel"></div>
+    <div class="toggles" id="psTog" style="margin-bottom:12px"></div>
+    <div class="seg" id="psMode"><button data-m="day" class="on">Par jour</button><button data-m="month">Par mois</button></div>
+    <label class="inl" id="psDayL">Jour <input type="date" id="psDay" value="2026-01-07" min="2025-10-01" max="2026-09-30"></label>
+    <label class="inl" id="psMonthL" style="display:none">Mois <select id="psMonth"></select></label>
+    <button class="btn sm" id="psPrev">◀</button><button class="btn sm" id="psNext">▶</button>
+  </div>
+  <div class="kpirow" id="psKpi"></div>
+  <div class="box"><h3>Pourquoi la batterie est réglée ainsi <i class="tip" data-tip="Texte recalculé pour la variante choisie, selon les boutons Batterie / Peak shaving et les réglages de l'onglet Paramètres.">i</i></h3><div id="psWhy" class="why-txt"></div></div>
+  <div class="box"><h3>Consommation, production et soutirage réseau <i class="tip" data-tip="Gris : consommation de l'usine. Rouge pointillé : consommation moins production, c'est-à-dire ce qui serait soutiré sans batterie. Bleu : ce qui est réellement soutiré au réseau. Noir pointillé : seuil de pointe visé par la batterie (il remonte si une pointe plus haute passe dans le mois).">i</i></h3><canvas id="psMain" height="95"></canvas><p class="cap">L'écart entre la courbe rouge et la courbe bleue au-dessus du seuil, c'est la pointe écrêtée par la batterie.</p></div>
+  <div class="box"><h3>Charge et décharge de la batterie <i class="tip" data-tip="Au-dessus de zéro : la batterie se charge (vert : avec le surplus solaire, gris : sur le réseau, sans créer de pointe). Sous zéro : elle se décharge (rouge : pour écrêter une pointe, bleu : pour couvrir la consommation avec l'énergie stockée).">i</i></h3><canvas id="psBat" height="70"></canvas><p class="cap">Vert : charge solaire · gris : charge réseau · rouge : décharge peak shaving · bleu : décharge autoconsommation.</p></div>
+  <div class="box"><h3>État de charge <i class="tip" data-tip="Énergie contenue dans la batterie. Ligne rouge : réserve gardée en semaine pour les pointes (une valeur en hiver, une en été). Au-dessus, la batterie couvre la consommation de l'usine. Le week-end, la réserve est libérée.">i</i></h3><canvas id="psSoc" height="45"></canvas></div>
+  <div class="grid2">
+    <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas><p class="cap" id="psRate"></p></div>
+    <div class="box"><h3>D'où vient l'énergie consommée <i class="tip" data-tip="Consommation de l'usine sur la période : couverte directement par le solaire, par la batterie, ou par le réseau.">i</i></h3><canvas id="psSrc" height="130"></canvas></div>
+  </div>
+  <div class="box"><h3>Coût des pointes et gain du peak shaving, mois par mois <i class="tip" data-tip="Pointe facturée chaque mois sans solaire (courbe de charge réelle), avec le solaire seul et avec le solaire et la batterie. Les colonnes de droite montrent pourquoi la batterie tient le seuil en été et pas toujours en hiver.">i</i></h3><div class="tablewrap"><table id="psCost"></table></div><p class="cap" id="psCostTxt"></p></div>
+  <div class="box"><h3>Règles de gestion de la batterie <i class="tip" data-tip="Ce que fait la batterie à chaque quart d'heure dans la simulation. Seuil et réserves réglés automatiquement sur janvier à septembre 2025, modifiables dans Paramètres.">i</i></h3><div id="psRules"></div></div>
+</section>
+
+<!-- DETAIL -->
+<section id="tab-detail" class="panel">
+  <div class="row">
+    <div class="seg" id="detSel"></div>
+    <div class="seg" id="detPer"><button data-p="week" class="on">Semaine</button><button data-p="month">Mois</button><button data-p="quarter">Trimestre</button><button data-p="half">Semestre</button></div>
+    <label class="inl" id="detDateL">Semaine du <input type="date" id="detDate" value="2026-06-08" min="2025-10-01" max="2026-09-23"></label>
+    <label class="inl" id="detPickL" style="display:none"><span id="detPickT">Mois</span> <select id="detPick"></select></label>
+    <button class="btn sm" id="detPrev">◀</button><button class="btn sm" id="detNext">▶</button>
+  </div>
+  <div class="kpirow" id="detKpi"></div>
+  <div class="box"><h3 id="detTitle">Charge, production et réseau</h3><canvas id="chWeek" height="90"></canvas><p class="cap" id="detCap">Gris : consommation de l'usine. Jaune : production de la partie autoconsommation. Bleu : soutirage réseau. Les creux sous zéro sont revendus.</p></div>
+  <div class="box"><h3>État de charge de la batterie</h3><canvas id="chSoc" height="50"></canvas><p class="cap">Du lundi au vendredi, la réserve reste disponible pour les pointes ; le week-end, la batterie stocke le surplus.</p></div>
+  <div class="box"><h3>Pointes et énergie par mois</h3><div class="tablewrap"><table id="tblMonth"></table></div></div>
+</section>
+
+<!-- ACTIONNAIRE -->
+<section id="tab-act" class="panel">
+  <div class="row">
+    <div class="seg" id="actSel"></div>
+    <div class="toggles" id="actTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="repAct">Rapport PDF actionnaire</button>
+  </div>
+  <div class="box"><h3>Synthèse des trois variantes</h3><div class="tablewrap"><table id="actSum"></table></div></div>
+  <p class="cap">Le détail est dans les onglets « Fichier Vert » et « Flux Inv. propre », présentés comme les fichiers Excel.</p>
+</section>
+
+<!-- FICHIER VERT -->
+<section id="tab-vert" class="panel">
+  <div class="row">
+    <div class="seg" id="vertSel"></div>
+    <div class="toggles" id="vertTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="vertReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
+    <button class="btn sm" id="vertPdf" title="Tableau client, Graph et Fichier Vert de la variante affichée">PDF de cette variante</button>
+    <button class="btn sm" id="vertPdfAll" title="Synthèse puis les trois variantes">PDF des 3 variantes</button>
+  </div>
+  <p class="cap" style="margin:-4px 0 12px">Même feuille que le fichier Excel « Fichier Vert ». Les cases jaunes se modifient : tapez la valeur puis Entrée. Le total, la marge et la marge cumulée se recalculent.</p>
+  <div class="xlpages" id="vertPages"></div>
+</section>
+
+<!-- FLUX INV. PROPRE -->
+<section id="tab-fip" class="panel">
+  <div class="row">
+    <div class="seg" id="fipSel"></div>
+    <div class="toggles" id="fipTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="fipReset" title="Remet les valeurs des fichiers Excel pour cette variante">Revenir aux valeurs Excel</button>
+    <button class="btn sm" id="fipPdf" title="Tableau client, Graph et Fichier Vert de la variante affichée">PDF de cette variante</button>
+    <button class="btn sm" id="fipPdfAll" title="Synthèse puis les trois variantes">PDF des 3 variantes</button>
+  </div>
+  <p class="cap" style="margin:-4px 0 12px">Mêmes feuilles que les fichiers Excel « Flux Inv. propre » (Tableau client et Graph). Les cases jaunes se modifient : tapez la valeur puis Entrée. Autoconsommation, revente et peak shaving viennent de la simulation au quart d'heure et suivent les boutons Batterie et Peak shaving. Les taux (hypothèque, assurance, maintenance, prix de vente…) sont communs aux trois variantes.</p>
+  <div class="xlpages" id="fipPages"></div>
+</section>
+
+<!-- PARAM -->
+<section id="tab-param" class="panel">
+  <div class="box"><h3>Paramètres par variante</h3><div class="tablewrap"><table id="tblVar" class="ptable"></table></div></div>
+  <div class="box"><h3>Paramètres communs</h3><div class="tablewrap"><table id="tblGlob" class="ptable"></table></div></div>
+  <div class="row"><button id="reset" class="btn">Revenir aux valeurs des fichiers</button></div>
+  <p class="cap">Valeurs par défaut : fichiers « Flux Inv. propre » V1, V2, V3, fichier vert (prix de l'offre et batteries) et factures Romande Energie (tarif de puissance, énergie réactive).</p>
+</section>
+</main>
+<div id="tipbox"></div>
+<div id="report"></div>
+<script src="app.js?v=20261119g"></script>
+</body>
+</html>

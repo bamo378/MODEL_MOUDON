@@ -190,3 +190,6 @@ table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;
 .sliders{display:grid;gap:10px}.sliders label{display:grid;grid-template-columns:150px 1fr 470px;align-items:center;gap:12px;font-size:13px}
 .sliders input[type=range]{width:100%;accent-color:#1c3d5a}.sliders b{font-size:13px}
 @media (max-width:900px){.sliders label{grid-template-columns:1fr}}
+
+.vsw{display:flex;gap:6px;align-items:center;justify-content:flex-end;padding:6px 24px;background:#1c3d5a;color:#fff;font-size:12px}.vsw a{color:#fff;text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.5);border-radius:5px}.vsw a.on{background:#fff;color:#1c3d5a;font-weight:600}
+@media print{.vsw{display:none!important}}
