@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="data.js"></script>
+<script src="costs.js"></script>
 </head>
 <body>
 <header class="top">
@@ -26,6 +27,7 @@
   <button class="tab" data-tab="ps">Peak shaving</button>
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
+  <button class="tab" data-tab="act">Actionnaire</button>
   <span class="status" id="status"></span>
   <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
 </nav>
@@ -82,6 +84,23 @@
   <div class="box"><h3>Charge, production et réseau</h3><canvas id="chWeek" height="90"></canvas><p class="cap">Gris : consommation de l'usine. Jaune : production de la partie autoconsommation. Bleu : soutirage réseau. Les creux sous zéro sont revendus.</p></div>
   <div class="box"><h3>État de charge de la batterie</h3><canvas id="chSoc" height="50"></canvas><p class="cap">Du lundi au vendredi, la réserve reste disponible pour les pointes ; le week-end, la batterie stocke le surplus.</p></div>
   <div class="box"><h3>Pointes et énergie par mois</h3><div class="tablewrap"><table id="tblMonth"></table></div></div>
+</section>
+
+<!-- ACTIONNAIRE -->
+<section id="tab-act" class="panel">
+  <div class="box"><h3>Synthèse actionnaire <i class="tip" data-tip="Vue interne Soleol : prix de l'offre, prix de revient et marge (fichier de prix), puis flux d'investissement propre calculés avec l'autoconsommation simulée au quart d'heure. Les boutons Batterie et Peak shaving s'appliquent ici comme dans les autres onglets.">i</i></h3><div class="tablewrap"><table id="actSum"></table></div></div>
+  <div class="row">
+    <div class="seg" id="actSel"></div>
+    <div class="toggles" id="actTog" style="margin-bottom:12px"></div>
+    <button class="btn sm" id="repAct">Rapport PDF actionnaire</button>
+  </div>
+  <div class="grid2">
+    <div class="box"><h3>Cash-flow annuel <i class="tip" data-tip="Liquidités dégagées chaque année. Toutes les liquidités dégagées les premières années remboursent intégralement la dette (même logique que les fichiers de flux).">i</i></h3><canvas id="actCf"></canvas><p class="cap">Toutes les liquidités dégagées les premières années remboursent intégralement la dette.</p></div>
+    <div class="box"><h3>Liquidités cumulées, investissement entièrement payé</h3><canvas id="actLiq"></canvas><p class="cap" id="actLiqTxt"></p></div>
+  </div>
+  <div class="box"><h3 id="actCostTitle">Fichier de coûts</h3><div id="actCostHead" class="cap" style="margin:0 0 8px"></div><div class="tablewrap"><table id="actCost" class="ctab"></table></div></div>
+  <div class="box"><h3 id="actFluxTitle">Flux investissement propre</h3><div class="tablewrap"><table id="actWork"></table></div></div>
+  <div class="box"><h3>Calculs année par année <i class="tip" data-tip="Même structure que la feuille Calculs des fichiers de flux. Autoconsommation et ventes reprises de la simulation au quart d'heure, et non plus de l'exemple à 95 %.">i</i></h3><div class="tablewrap"><table id="actFlux"></table></div></div>
 </section>
 
 <!-- PARAM -->

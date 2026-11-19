@@ -90,3 +90,9 @@ tr.hl td{font-weight:700}
   #report ul{margin:4px 0;padding-left:16px}
   #report .keep{break-inside:avoid}
 }
+
+.ctab td.n{color:var(--mut);font-size:11.5px;white-space:normal;text-align:left;min-width:220px}
+.ctab tr.off td{color:#b0afa9;text-decoration:line-through}
+.ctab tr.sum td{font-weight:700;border-top:2px solid var(--line)}
+#actWork td:nth-child(odd){color:var(--mut)}#actWork td:nth-child(even){font-weight:600}
+@media print{#report .ctab td.n{font-size:7.5pt;color:#5d5c58;text-align:left;white-space:normal}#report .tiny{font-size:7.4pt}#report .tiny th,#report .tiny td{padding:2px 3px}}
