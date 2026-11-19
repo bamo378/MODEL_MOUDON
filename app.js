@@ -686,7 +686,9 @@ function report(expert){
     <li><b>Injection totale (RUE)</b> : installation séparée dont toute la production est revendue ; elle reçoit une rétribution unique plus élevée (${fN(G.rueRate)} CHF/kWc${G.rueOn?', à confirmer par Pronovo':', considérée ici comme refusée'}).</li>
     <li><b>Batterie</b> : en semaine, elle garde une réserve pour écrêter les pointes ; le week-end, elle stocke le surplus solaire.</li>
     <li>Les montants dépendent des hypothèses ci-dessous ; un changement de tarif ou de subvention peut modifier le classement.</li>
-   </ul>`;
+   </ul>
+   <div class="pb"></div><h2>Photomontages des variantes</h2>
+   ${RES.map((r,i)=>`<div class="pmrep"><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note"><b>${r.v.name}</b> · ${PM_TXT[i]}</p></div>`).join('')}`;
   if (expert){
     const sumP = a => a.reduce((x,y)=>x+y,0);
     h += `<div class="pb"></div><h2>Gains annuels par poste (1re année, CHF)</h2><table>${th}<tbody>
@@ -942,12 +944,23 @@ function reportAct(only){
     const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
     const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
                           .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`);
-    h += `${pageFlux(i)}${g}${pageCost(i)}`;
+    h += `<div class="pmpage"><h2>Photomontage · ${r.v.name}</h2><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note">${PM_TXT[i]}</p></div>${pageFlux(i)}${g}${pageCost(i)}`;
   });
   const el = document.getElementById('report'); el.innerHTML = h.replace(/<input class="xe"[^>]*value="([^"]*)"[^>]*>/g, '$1');
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
 }
+const PM_TXT = [`Injection totale 3'195,3 kWc (sheds est-ouest et toits sud-ouest) + autoconsommation 1'005,5 kWc (sheds sud-ouest S43.2–S76), 8'573 modules Longisolar 490 W.`,
+  `Toute la toiture en autoconsommation : 4'200,8 kWc, 8'573 modules Longisolar 490 W, 17'499 m².`,
+  `Autoconsommation avec moins de panneaux : 2'912,1 kWc, 5'943 modules Longisolar 490 W, 12'131 m².`];
+function renderPM(){
+  const el = document.getElementById('pmGal'); if (!el) return;
+  el.innerHTML = V.map((v,i)=>`<figure class="pm"><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${v.name}" data-i="${i}" loading="lazy"><figcaption><b style="color:${COLORS[i]}">${v.name}</b><br>${PM_TXT[i]}</figcaption></figure>`).join('');
+  el.querySelectorAll('img').forEach(im => im.onclick = () => { const lb = document.getElementById('lb'); lb.querySelector('img').src = im.src; lb.querySelector('p').textContent = V[+im.dataset.i].name + ' · ' + PM_TXT[+im.dataset.i]; lb.classList.add('on'); });
+}
+renderPM();
+document.getElementById('lb').onclick = () => document.getElementById('lb').classList.remove('on');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('lb').classList.remove('on'); });
 function renderScen(){ const el = document.getElementById('psScen'); if (!el) return;
   el.innerHTML = Object.entries(PS_SCEN).map(([k,o]) => `<button data-s="${k}" class="${G.psScen===k?'on':''}" title="${o.d.replace(/"/g,'&quot;')}">${o.t}</button>`).join('');
   el.querySelectorAll('button').forEach(b => b.onclick = () => { G.psScen = b.dataset.s; save(); renderScen(); renderParams(); schedule(); }); }
