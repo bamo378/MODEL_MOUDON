@@ -192,7 +192,7 @@ function compute(v){
     year1: sEnergy + sPeak + sQ + sExp + sRue, autoconso: v.prodAc - r.exp,
     tauxAc: v.prodAc > 0 ? (v.prodAc - r.exp)/v.prodAc : 0, tauxAc0: v.prodAc > 0 ? (v.prodAc - r0.exp)/v.prodAc : 0,
     couverture: (v.prodAc - r.exp)/(sum(BASE.imp)), tauxTot: (v.prodAc + v.prodRue) > 0 ? (v.prodAc - r.exp)/(v.prodAc + v.prodRue) : 0, surplus: r.exp, rueProd: v.prodRue,
-    peakAvg: sum(r.peak)/12, peakMonths: Array.from(r.peak), impMonths: Array.from(r.imp), rows, npv, cum, payback, simple, cycles: cap ? r.dis/cap : 0};
+    peakAvg: sum(r.peak)/12, peakMonths: Array.from(r.peak), peakPv: Array.from(r0.peak), impMonths: Array.from(r.imp), rows, npv, cum, payback, simple, cycles: cap ? r.dis/cap : 0};
 }
 
 /* ---------------- Formatage ---------------- */
@@ -385,6 +385,7 @@ function renderPS(){
     [fN(E.pvSold/1000,1)+' MWh', 'Surplus revendu', 'Production solaire que ni l\'usine ni la batterie n\'ont pu utiliser.']];
   document.getElementById('psKpi').innerHTML = kp.map(k=>`<div class="kpi"><b>${k[0]}</b><span>${k[1]} <i class="tip" data-tip="${k[2]}">i</i></span></div>`).join('');
   bindTips(document.getElementById('psKpi'));
+  renderPSCost(r);
   const tick = psMode === 'day'
     ? {autoSkip:false, maxRotation:0, callback:(v,i)=> i%8===0 ? lab[i] : ''}
     : {autoSkip:false, maxRotation:0, callback:(v,i)=> (i%96===0 && (i/96)%2===0) ? lab[i].split(' ').slice(0,2).join(' ') : ''};
@@ -411,6 +412,53 @@ function renderPS(){
   document.getElementById('psRate').textContent = `Taux d'autoconsommation sur la période : ${E.pv ? fN((E.pv - E.pvSold)/E.pv*100,1) : 0} % · consommation couverte par le solaire : ${E.load ? fN((E.direct + E.pvBat*G.eta*G.eta)/E.load*100,1) : 0} %.`;
   hb('psUse', [['Utilisée directement', E.direct, '#2a78d6'], ['Stockée dans la batterie', E.pvBat, '#1baf7a'], ['Revendue', E.pvSold, '#eda100']], E.pv);
   hb('psSrc', [['Solaire direct', E.direct, '#eda100'], ['Batterie (pointes)', E.batPeak, '#c0392b'], ['Batterie (autoconso)', E.batAc, '#1baf7a'], ['Réseau', E.load - E.direct - E.batPeak - E.batAc, '#8c8b86']], E.load);
+}
+
+
+// Coût des pointes mois par mois, règles de la batterie, été / hiver
+function renderPSCost(r){
+  const S = YEAR, v = r.v, ps = r.hasBat && r.mode === 0, T = r.T;
+  const need = [], hrs = [];
+  for (let m = 0; m < 12; m++){ need.push(0); hrs.push(0); }
+  if (ps){
+    const day = {};
+    for (let i = 0; i < S.n; i++){
+      if (S.wk[i]) continue;
+      const x = S.load[i] - v.prodAc*S.pv[i], d = Math.floor(i/96), k = S.m[i];
+      if (!day[d]) day[d] = {k, e:0, h:0};
+      if (x > T){ day[d].e += (x - T)*DT; day[d].h += DT; }
+    }
+    Object.values(day).forEach(d => { need[d.k] = Math.max(need[d.k], d.e); hrs[d.k] = Math.max(hrs[d.k], d.h); });
+  }
+  let tS = 0, tB = 0;
+  const rows = MONTHS.map((mo, k) => {
+    const b = BASE.peak[k], p0 = r.peakPv[k], p = r.peakMonths[k], gS = (b - p0)*G.puiss, gB = (p0 - p)*G.puiss;
+    tS += gS; tB += gB;
+    const held = ps && p <= T + 5;
+    return `<tr><td>${mo}</td><td>${fN(b)}</td><td>${fN(p0)}</td><td style="font-weight:600">${fN(p)}</td><td>${fN(b - p)}</td><td>${fCHF(gS)}</td><td>${fCHF(gB)}</td><td style="font-weight:600">${fCHF(gS + gB)}</td>` +
+      (ps ? `<td>${fN(need[k])}</td><td>${fN(hrs[k],1)}</td><td style="color:${held?'var(--good)':'#b3261e'}">${held?'oui':'non'}</td>` : '') + '</tr>';
+  }).join('');
+  document.getElementById('psCost').innerHTML = `<thead><tr><th>Mois</th><th>Sans solaire (kW)</th><th>Solaire seul (kW)</th><th>Solaire + batterie (kW)</th><th>kW en moins</th><th>Gain solaire (CHF)</th><th>Gain batterie (CHF)</th><th>Gain du mois (CHF)</th>` +
+    (ps ? `<th>Besoin pire jour (kWh)</th><th>Heures au-dessus du seuil</th><th>Seuil tenu</th>` : '') + `</tr></thead><tbody>${rows}` +
+    `<tr class="hl"><td>Total année</td><td></td><td></td><td></td><td></td><td>${fCHF(tS)}</td><td>${fCHF(tB)}</td><td>${fCHF(tS + tB)}</td>${ps?'<td></td><td></td><td></td>':''}</tr></tbody>`;
+  document.getElementById('psCostTxt').innerHTML = `Chaque mois, Romande Energie facture la plus haute puissance soutirée sur un quart d'heure, à ${fN(G.puiss,2)} CHF par kW. Économie du mois = (pointe sans solaire − pointe avec solaire et batterie) × ${fN(G.puiss,2)} CHF. ` +
+    (ps ? `La batterie contient ${fN(r.cap)} kWh utiles : quand le besoin d'un jour de semaine dépasse cette quantité (surtout en hiver, quand l'usine reste des heures au-dessus du seuil et que le solaire produit peu), la pointe passe et compte pour tout le mois.` : 'Sans peak shaving, seul le solaire réduit la pointe.');
+  const cap = r.cap, rule = document.getElementById('psRules');
+  rule.innerHTML = !r.hasBat ? '<p>Pas de batterie dans cette variante.</p>' : `
+    <div class="kpirow" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><b>${fN(cap)} kWh</b><span>Capacité utile (${fN(G.usable*100)} % de ${fN(v.batKwh)} kWh)</span></div>
+      <div class="kpi"><b>${ps ? fN(T)+' kW' : '–'}</b><span>Seuil de pointe visé</span></div>
+      <div class="kpi"><b>${ps ? fN(r.R*cap)+' kWh' : '–'}</b><span>Réserve pour les pointes, hiver (oct.–mars)</span></div>
+      <div class="kpi"><b>${ps ? fN(r.Rs*cap)+' kWh' : '–'}</b><span>Réserve pour les pointes, été (avr.–sept.)</span></div></div>
+    <ol class="rules">
+      <li><b>Trop de soleil :</b> le surplus charge la batterie ; quand elle est pleine, le reste est revendu.</li>
+      ${ps ? `<li><b>L'usine tire plus de ${fN(T)} kW :</b> la batterie se décharge (jusqu'à ${fN(v.batKw)} kW) pour que le réseau ne fournisse pas plus que le seuil. Si une pointe passe quand même, le seuil remonte jusqu'à la fin du mois, puisque la pointe facturée est déjà atteinte.</li>
+      <li><b>Sous le seuil, batterie au-dessus de la réserve :</b> l'énergie en trop couvre la consommation de l'usine.</li>
+      <li><b>Bien sous le seuil (moins de ${fN(T-100)} kW) et batterie sous la réserve :</b> recharge sur le réseau jusqu'à la réserve seulement, sans dépasser ${fN(T-50)} kW de soutirage.</li>
+      <li><b>Week-end (vendredi 22h – dimanche 20h) :</b> pas de réserve, la batterie couvre l'usine et se remplit au soleil.</li>` :
+      `<li><b>Sans peak shaving :</b> la batterie couvre la consommation de l'usine dès qu'elle contient de l'énergie.</li>`}
+    </ol>
+    ${ps ? `<p class="cap">Pourquoi garder la réserve : une seule pointe ratée coûte (kW au-dessus du seuil) × ${fN(G.puiss,2)} CHF pour tout le mois, par exemple 240 kW = ${fCHF(240*G.puiss)} CHF. Vider la batterie la nuit pour l'usine ne rapporte qu'environ 1 ct par kWh (on économise ${fN(v.acPrice*100,1)} ct, mais on la recharge avec du solaire qui aurait été revendu ${fN(G.rev*100,2)} ct, avec ${fN((1-G.eta*G.eta)*100)} % de pertes).</p>` : ''}`;
 }
 
 /* ---------------- Paramètres ---------------- */

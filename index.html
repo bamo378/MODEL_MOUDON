@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119d">
+<link rel="stylesheet" href="style.css?v=20261119e">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119d"></script>
-<script src="costs.js?v=20261119d"></script>
+<script src="data.js?v=20261119e"></script>
+<script src="costs.js?v=20261119e"></script>
 </head>
 <body>
 <header class="top">
@@ -75,6 +75,8 @@
     <div class="box"><h3>À quoi sert la production solaire <i class="tip" data-tip="Production de la partie autoconsommation sur la période : utilisée directement par l'usine, stockée dans la batterie, ou revendue au réseau.">i</i></h3><canvas id="psUse" height="130"></canvas><p class="cap" id="psRate"></p></div>
     <div class="box"><h3>D'où vient l'énergie consommée <i class="tip" data-tip="Consommation de l'usine sur la période : couverte directement par le solaire, par la batterie, ou par le réseau.">i</i></h3><canvas id="psSrc" height="130"></canvas></div>
   </div>
+  <div class="box"><h3>Coût des pointes et gain du peak shaving, mois par mois <i class="tip" data-tip="Pointe facturée chaque mois sans solaire (courbe de charge réelle), avec le solaire seul et avec le solaire et la batterie. Les colonnes de droite montrent pourquoi la batterie tient le seuil en été et pas toujours en hiver.">i</i></h3><div class="tablewrap"><table id="psCost"></table></div><p class="cap" id="psCostTxt"></p></div>
+  <div class="box"><h3>Règles de gestion de la batterie <i class="tip" data-tip="Ce que fait la batterie à chaque quart d'heure dans la simulation. Seuil et réserves réglés automatiquement sur janvier à septembre 2025, modifiables dans Paramètres.">i</i></h3><div id="psRules"></div></div>
 </section>
 
 <!-- DETAIL -->
@@ -135,6 +137,6 @@
 </main>
 <div id="tipbox"></div>
 <div id="report"></div>
-<script src="app.js?v=20261119d"></script>
+<script src="app.js?v=20261119e"></script>
 </body>
 </html>

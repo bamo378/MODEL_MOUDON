@@ -147,3 +147,5 @@ input.xe:hover{border-color:#b89a22}input.xe:focus{outline:2px solid #1c3d5a;bac
 .vt input.xe{height:15px}
 .xt td[colspan="2"]{white-space:normal}
 .xlpage{overflow-x:auto}
+.rules{margin:4px 0 8px;padding-left:20px;font-size:13px}.rules li{margin:3px 0}
+#psCost th{white-space:normal;vertical-align:bottom}
