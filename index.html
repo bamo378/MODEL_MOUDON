@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119j">
+<link rel="stylesheet" href="style.css?v=20261119k">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119j"></script>
-<script src="costs.js?v=20261119j"></script>
+<script src="data.js?v=20261119k"></script>
+<script src="costs.js?v=20261119k"></script>
 </head>
 <body>
 <header class="top">
@@ -40,7 +40,6 @@
 <section id="tab-comp" class="panel active">
   <div class="cards" id="cards"></div>
   <div class="best" id="best"></div>
-  <div class="box"><h3>Photomontages des variantes <i class="tip" data-tip="Photomontages Soleol du 03.11.2026. Cliquez sur une image pour l'agrandir.">i</i></h3><div class="pmgal" id="pmGal"></div></div>
   <div class="grid2">
     <div class="box"><h3>Liquidités cumulées <i class="tip" data-tip="Argent disponible chaque année après assurance, maintenance, intérêts et remboursement complet de la dette, cumulé. Même logique que les fichiers de flux Soleol : toutes les liquidités remboursent d'abord l'hypothèque.">i</i></h3><canvas id="chCum"></canvas><p class="cap">Une courbe qui monte tôt = installation payée tôt. La hauteur finale = argent laissé au client.</p></div>
     <div class="box"><h3>Gain net actualisé <i class="tip" data-tip="Somme des gains annuels actualisés au taux choisi, plus la subvention, moins le prix de l'offre. Plus haut = plus rentable sur la durée.">i</i></h3><canvas id="chNpv"></canvas><p class="cap">Valeur aujourd'hui de tout ce que la variante rapporte, investissement déduit.</p></div>
@@ -48,6 +47,7 @@
     <div class="box"><h3>Où va la production <i class="tip" data-tip="Autoconsommé : utilisé par l'usine (directement ou via la batterie). Surplus : part autoconsommation revendue. Injection totale : installation RUE séparée, tout est revendu.">i</i></h3><canvas id="chEnergy"></canvas><p class="cap">MWh par an, 1re année.</p></div>
   </div>
   <div class="box"><h3>Tableau comparatif</h3><div class="tablewrap"><table id="tblComp"></table></div></div>
+  <div class="box"><h3>Photomontages des variantes <i class="tip" data-tip="Photomontages Soleol du 03.11.2026. Cliquez sur une image pour l'agrandir.">i</i></h3><div class="pmgal" id="pmGal"></div></div>
 </section>
 
 <!-- FLUX -->
@@ -146,6 +146,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261119j"></script>
+<script src="app.js?v=20261119k"></script>
 </body>
 </html>

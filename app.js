@@ -686,9 +686,7 @@ function report(expert){
     <li><b>Injection totale (RUE)</b> : installation séparée dont toute la production est revendue ; elle reçoit une rétribution unique plus élevée (${fN(G.rueRate)} CHF/kWc${G.rueOn?', à confirmer par Pronovo':', considérée ici comme refusée'}).</li>
     <li><b>Batterie</b> : en semaine, elle garde une réserve pour écrêter les pointes ; le week-end, elle stocke le surplus solaire.</li>
     <li>Les montants dépendent des hypothèses ci-dessous ; un changement de tarif ou de subvention peut modifier le classement.</li>
-   </ul>
-   <div class="pb"></div><h2>Photomontages des variantes</h2>
-   ${RES.map((r,i)=>`<div class="pmrep"><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note"><b>${r.v.name}</b> · ${PM_TXT[i]}</p></div>`).join('')}`;
+   </ul>`;
   if (expert){
     const sumP = a => a.reduce((x,y)=>x+y,0);
     h += `<div class="pb"></div><h2>Gains annuels par poste (1re année, CHF)</h2><table>${th}<tbody>
@@ -716,6 +714,7 @@ function report(expert){
       <li>Non compris : remplacement d'onduleurs ou de batterie, évolution des tarifs, frais de raccordement. Une seule année de consommation, reproduite sur toute la durée.</li></ul>`;
   }
   h += `<p class="note" style="margin-top:14px">Résultats calculés avec les paramètres saisis dans le simulateur le ${today}. Document indicatif, ne constitue pas une offre ferme.</p>`;
+  h += `<div class="pb"></div><h2>Annexe · photomontages des variantes</h2>${RES.map((r,i)=>`<div class="pmrep"><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note"><b>${r.v.name}</b> · ${PM_TXT[i]}</p></div>`).join('')}`;
   const el = document.getElementById('report'); el.innerHTML = h;
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
@@ -938,14 +937,17 @@ function reportAct(only){
    <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes. Coûts : fichier de prix du 18.11.2026.</div>
    <h2>Synthèse des trois variantes</h2><table>${document.getElementById('actSum').innerHTML}</table>
    <p class="note">Les pages suivantes reprennent la présentation des fichiers Excel : Tableau client (flux financiers), Graph (cash-flow et liquidités cumulées) et Fichier Vert (coûts et marge)${only!==null?' pour '+RES[only].v.name:' pour chaque variante'}.</p>`;
+  let pmAnnex = '';
   RES.forEach((r,i) => {
     if (only !== null && i !== only) return;
     const fl = actFlux(i);
     const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
     const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
                           .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`);
-    h += `<div class="pmpage"><h2>Photomontage · ${r.v.name}</h2><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note">${PM_TXT[i]}</p></div>${pageFlux(i)}${g}${pageCost(i)}`;
+    h += `${pageFlux(i)}${g}${pageCost(i)}`;
+    pmAnnex += `<div class="pmpage"><h2>Annexe · photomontage ${r.v.name}</h2><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note">${PM_TXT[i]}</p></div>`;
   });
+  h += pmAnnex;
   const el = document.getElementById('report'); el.innerHTML = h.replace(/<input class="xe"[^>]*value="([^"]*)"[^>]*>/g, '$1');
   const imgs = [...el.querySelectorAll('img')];
   Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => window.print(), 100));
