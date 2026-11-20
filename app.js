@@ -1134,10 +1134,11 @@ function drawCarpet(){
   document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> (trait noir) · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette de la souris sur le graphique : jour suivant / précédent (Maj + molette : semaine). Clic sur le relief : choisir ce jour.</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
   const el = document.getElementById('a3Carpet');
   if (!el._wheel){ el._wheel = true; let acc = 0, raf = 0, slow = 0;
-    el.addEventListener('wheel', e => { e.preventDefault(); acc += e.deltaY || e.deltaX; if (Math.abs(acc) < 40) return;
-      const st = (acc > 0 ? 1 : -1)*(e.shiftKey ? 7 : 1); acc = 0; a3Day(st);
+    el.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation(); acc += (e.deltaMode === 1 ? 40 : 1)*(e.deltaY || e.deltaX);
+      let n = Math.trunc(acc/80); if (!n) return; acc -= n*80; n = Math.max(-10, Math.min(10, n));
+      a3Day(n*(e.shiftKey ? 7 : 1));
       cancelAnimationFrame(raf); raf = requestAnimationFrame(drawCarpet);
-      clearTimeout(slow); slow = setTimeout(() => { drawFlow(); drawSite(); }, 250); }, {passive:false});
+      clearTimeout(slow); slow = setTimeout(() => { drawFlow(); drawSite(); }, 250); }, {passive:false, capture:true});
     el.on('plotly_click', ev => { const pt = ev.points && ev.points[0]; if (!pt || typeof pt.x !== 'number') return;
       const d = new Date(YEAR.t0 + Math.round(pt.x)*86400000).toISOString().slice(0,10); A3.day = d; document.getElementById('a3Day').value = d; drawCarpet(); drawFlow(); drawSite(); }); }
 }
