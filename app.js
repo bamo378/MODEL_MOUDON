@@ -2186,3 +2186,16 @@ document.getElementById('fipReset').onclick = () => {
 bindTips(document);
 renderParams();
 render();
+
+/* ---------------- Mise à jour automatique (évite l'ancienne version en cache) ---------------- */
+(function(){
+  const cur = ((document.querySelector('script[src*="app.js"]') || {}).src || '').match(/[?&]v=([\w]+)/); if (!cur) return;
+  const check = auto => fetch(location.pathname + '?nc=' + Date.now(), {cache:'no-store'}).then(r => r.text()).then(t => {
+    const n = (t.match(/app\.js\?v=([\w]+)/) || [])[1]; if (!n || n === cur[1]) return;
+    let seen = false; try { seen = sessionStorage.getItem('moudon_rl_' + n); sessionStorage.setItem('moudon_rl_' + n, 1); } catch (e) {}
+    if (auto && !seen){ location.replace(location.pathname + '?v=' + n + location.hash); return; }
+    if (!document.getElementById('newv')){ const b = document.createElement('div'); b.id = 'newv'; b.innerHTML = 'Une nouvelle version du site est disponible. <button>Recharger</button>';
+      b.querySelector('button').onclick = () => location.replace(location.pathname + '?v=' + n + location.hash); document.body.appendChild(b); }
+  }).catch(() => {});
+  check(true); setInterval(() => check(false), 5*60*1000);
+})();
