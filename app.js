@@ -842,7 +842,8 @@ document.getElementById('cfOpt').onclick = () => cfOptimize();
 
 /* ---------------- Version optimale : puissance RU, puissance RUE, batterie ---------------- */
 const OP = {roof: 4201, step: 300, bmax: 1500, bstep: 250, crit: 'cum', view: 'best', mode3: 'surface', ps: true};
-let opRun = 0, opData = null;
+let opRun = 0, opData = null, opDrawn = null, opCamRev = 1;
+const opSig = () => [opData && opData.key, OP.crit, OP.view, OP.mode3, opCamRev].join('§');
 function loadPlotly(cb){
   if (window.Plotly) return cb();
   const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js';
@@ -866,7 +867,7 @@ function renderOP(force){
   document.querySelectorAll('#opMode3 button').forEach(b => b.classList.toggle('on', b.dataset.m === OP.mode3));
   if (!document.getElementById('tab-opt').classList.contains('active') && !force) return;
   const key = opKey();
-  if (opData && opData.key === key){ loadPlotly(drawOP); return; }
+  if (opData && opData.key === key){ if (opDrawn !== opSig()) loadPlotly(drawOP); return; }
   const run = ++opRun, st = document.getElementById('opStatus'), H = Math.max(1, Math.round(G.horizon));
   const RU = [], BAT = [];
   for (let x = 0; x <= OP.roof + 1e-9; x += OP.step) RU.push(Math.round(x));
@@ -896,6 +897,7 @@ function renderOP(force){
 function opBest(list){ return list.reduce((b,c) => opVal(c) > opVal(b) ? c : b, list[0]); }
 function drawOP(){
   if (!opData || !window.Plotly) return;
+  opDrawn = opSig();
   const {cells, RU, BAT, H} = opData, crit = OP_CRIT[OP.crit], best = opBest(cells);
   // sélecteur de batterie pour la carte et la surface
   const vs = document.getElementById('opView');
@@ -915,7 +917,7 @@ function drawOP(){
     {type:'scatter', mode:'lines', x:[0, OP.roof], y:[OP.roof, 0], line:{color:'#b3261e', dash:'dot', width:1.5}, name:'Toiture pleine', hoverinfo:'skip'},
     {type:'scatter', mode:'markers+text', x:varPts.map(p=>p.x), y:varPts.map(p=>p.y), text:varPts.map(p=>p.n), textposition:'top right', marker:{size:11, color:varPts.map(p=>p.c), line:{color:'#fff', width:2}}, name:'Variantes actuelles', hoverinfo:'text', hovertext:varPts.map(p=>p.n)},
     {type:'scatter', mode:'markers+text', x:[best.ru], y:[best.rue], text:['Optimum'], textposition:'bottom right', textfont:{color:'#000', size:13}, marker:{symbol:'star', size:20, color:'#eda100', line:{color:'#000', width:1.5}}, name:'Optimum', hoverinfo:'text', hovertext:[`Optimum : RU ${fN(best.ru)} + RUE ${fN(best.rue)} kWc, batterie ${fN(best.bat)} kWh`]}],
-    {margin:{l:60,r:20,t:10,b:50}, height:470, font, xaxis:{title:{text:'Installation RU, autoconsommation (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, yaxis:{title:{text:'Installation RUE, injection totale (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, legend:{orientation:'h', y:-0.18}, showlegend:true, plot_bgcolor:'#fff', paper_bgcolor:'#fff'},
+    {margin:{l:60,r:20,t:10,b:50}, height:470, font, uirevision:'opmap', xaxis:{title:{text:'Installation RU, autoconsommation (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, yaxis:{title:{text:'Installation RUE, injection totale (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, legend:{orientation:'h', y:-0.18}, showlegend:true, plot_bgcolor:'#fff', paper_bgcolor:'#fff'},
     {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d']});
   // 3D
   if (OP.mode3 === 'surface'){
@@ -925,8 +927,8 @@ function drawOP(){
           text:P.map(p=>p[3]), hoverinfo:'text', lighting:{ambient:0.75, diffuse:0.6, specular:0.1}}; })(),
       {type:'scatter3d', mode:'markers+text', x:[best.ru], y:[best.rue], z:[opVal(best)], text:['Optimum'], marker:{size:7, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, textfont:{size:13}, hoverinfo:'text', hovertext:['Optimum']},
       {type:'scatter3d', mode:'markers+text', x:varPts.map(p=>p.x), y:varPts.map(p=>p.y), z:RES.map(r => OP.crit === 'npv' ? r.npv : OP.crit === 'roi' ? r.rows[H-1].cum/Math.max(1, r.price - r.sub) : r.rows[H-1].cum), text:varPts.map(p=>p.n), marker:{size:5, color:varPts.map(p=>p.c)}, hoverinfo:'text', hovertext:varPts.map(p=>p.n)}],
-      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, scene:{xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:crit.u}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
-      {responsive:true, displaylogo:false});
+      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, uirevision:'op3d'+opCamRev+OP.mode3, scene:{dragmode:'turntable', xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:crit.u}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
+      {responsive:true, displaylogo:false, scrollZoom:false, modeBarButtonsToRemove:['resetCameraLastSave3d']});
   } else {
     const vals = cells.map(opVal), lo = Math.min(...vals), hi = Math.max(...vals);
     Plotly.react('op3d', [
@@ -934,8 +936,8 @@ function drawOP(){
         marker:{size:cells.map(c => 3 + 9*((opVal(c)-lo)/Math.max(1e-9, hi-lo))**2), color:vals, colorscale:scale, opacity:0.85, colorbar:{title:{text:crit.u}, thickness:12}},
         hoverinfo:'text', hovertext:cells.map(c => `RU ${fN(c.ru)} + RUE ${fN(c.rue)} kWc<br>Batterie ${c.bat ? fN(c.bat)+' kWh' : 'aucune'}<br>${crit.t()} : ${fmt(opVal(c))}`)},
       {type:'scatter3d', mode:'markers+text', x:[best.ru], y:[best.rue], z:[best.bat], text:['Optimum'], marker:{size:9, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, hoverinfo:'skip'}],
-      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, scene:{xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:'Batterie (kWh)'}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
-      {responsive:true, displaylogo:false});
+      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, uirevision:'op3d'+opCamRev+OP.mode3, scene:{dragmode:'turntable', xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:'Batterie (kWh)'}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
+      {responsive:true, displaylogo:false, scrollZoom:false, modeBarButtonsToRemove:['resetCameraLastSave3d']});
   }
   // courbes autour de l'optimum
   const atSplit = BAT.map(b => cells.find(c => c.ru === best.ru && c.rue === best.rue && c.bat === b)).filter(Boolean);
@@ -974,6 +976,7 @@ document.getElementById('op_ps').onchange = e => { OP.ps = e.target.checked; ren
 document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; renderOP(); });
 document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP.mode3 = b.dataset.m; renderOP(); });
 document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
+document.getElementById('opCam').onclick = () => { opCamRev++; drawOP(); };
 document.getElementById('opGo').onclick = () => { opData = null; renderOP(true); };
 
 /* ---------------- Navigation ---------------- */
