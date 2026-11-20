@@ -1497,7 +1497,7 @@ function a3H(id, def){ const f = a3FsEl(), el = document.getElementById(id); ret
 function a3FsChanged(){
   document.querySelectorAll('[data-fs]').forEach(b => { const f = a3FsEl(); b.textContent = f && f.id === b.dataset.fs ? '✕ Quitter le plein écran' : '⛶ Plein écran'; });
   document.body.classList.toggle('fsopen', !!document.querySelector('.a3fsbox.fsfake'));
-  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); }, 120);
+  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); ['a3Carpet', 'a3Site'].forEach(id => { const el = document.getElementById(id); if (el && el.data) Plotly.Plots.resize(el); }); }, 120);
 }
 function a3FsExit(){ if (document.fullscreenElement) document.exitFullscreen(); document.querySelectorAll('.a3fsbox.fsfake').forEach(x => x.classList.remove('fsfake')); a3FsChanged(); }
 document.querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { const box = document.getElementById(b.dataset.fs);

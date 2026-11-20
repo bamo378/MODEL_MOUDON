@@ -208,9 +208,9 @@ table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;
 .reallinks .seg{margin:0}.reallinks .seg button{padding:5px 10px;font-size:12px}
 .a3fsbox{position:relative}.fsbtn{position:absolute;top:10px;right:12px;z-index:5}
 .a3fsbox:fullscreen{background:#fff;padding:18px 22px;overflow:auto;border-radius:0}
-.a3fsbox:fullscreen::after{content:"Échap : quitter · ← → : heure · ↑ ↓ : jour · espace : lecture";position:fixed;left:22px;bottom:10px;font-size:12px;color:#8a8984}
+.a3fsbox:fullscreen::after{content:"Échap : quitter · ← → : heure · ↑ ↓ : jour · espace : lecture";position:fixed;left:50%;transform:translateX(-50%);top:14px;font-size:12px;color:#8a8984;pointer-events:none}
 #a3Box3:fullscreen #a3Flow svg{width:100%;height:calc(100vh - 140px);max-height:none}
 .a3fsbox.fsfake{position:fixed;inset:0;z-index:9999;margin:0;border-radius:0;background:#fff;padding:18px 22px;overflow:auto}
-.a3fsbox.fsfake::after{content:"Échap : quitter · ← → : heure · ↑ ↓ : jour · espace : lecture";position:fixed;left:22px;bottom:10px;font-size:12px;color:#8a8984}
+.a3fsbox.fsfake::after{content:"Échap : quitter · ← → : heure · ↑ ↓ : jour · espace : lecture";position:fixed;left:50%;transform:translateX(-50%);top:14px;font-size:12px;color:#8a8984;pointer-events:none}
 body.fsopen{overflow:hidden}
 #a3Box3.fsfake #a3Flow svg{width:100%;height:calc(100vh - 140px);max-height:none}
