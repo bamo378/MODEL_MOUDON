@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120c">
+<link rel="stylesheet" href="style.css?v=20261120d">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120c"></script>
-<script src="costs.js?v=20261120c"></script>
+<script src="data.js?v=20261120d"></script>
+<script src="costs.js?v=20261120d"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -134,10 +134,10 @@
 <section id="tab-opt" class="panel">
   <div class="row">
     <div class="seg" id="opCrit"><button data-c="cum" class="on">Liquidités</button><button data-c="npv">Gain net actualisé</button></div>
-    <label class="sw" style="margin-bottom:12px"><input type="checkbox" id="op_ps"><span class="k"></span>Peak shaving</label>
     <button class="btn sm" id="opGo">Recalculer</button>
     <button class="btn sm" id="opApply" title="Ouvre cette configuration dans le configurateur de l'onglet Taille de batterie pour l'affiner avec les curseurs">Ouvrir dans le configurateur</button>
   </div>
+  <div class="toggles" id="opOpts" style="margin:0 0 12px"></div>
   <div class="row" style="gap:12px">
     <label class="inl">Toiture max. <input type="number" id="op_roof" step="50" style="width:70px"> kWc <i class="tip" data-tip="Puissance maximale posable : 4'200,8 kWc d'après le photomontage (8'573 modules). La somme RU + RUE ne peut pas dépasser cette valeur.">i</i></label>
     <label class="inl">Pas <input type="number" id="op_step" step="50" style="width:60px"> kWc</label>
@@ -225,6 +225,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120c"></script>
+<script src="app.js?v=20261120d"></script>
 </body>
 </html>

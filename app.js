@@ -841,7 +841,13 @@ document.getElementById('cfOpt').onclick = () => cfOptimize();
 
 
 /* ---------------- Version optimale : puissance RU, puissance RUE, batterie ---------------- */
-const OP = {roof: 4201, step: 300, bmax: 1500, bstep: 250, crit: 'cum', view: 'best', mode3: 'surface', ps: true};
+const OP = {roof: 4201, step: 300, bmax: 1500, bstep: 250, crit: 'cum', view: 'best', mode3: 'surface', ps: true, bat: true, rue: true, allowRue: true, grid: false, wk: false};
+const OP_OPTS = [['bat','Batterie','Tester des batteries sur la partie RU. Désactivé : uniquement des installations sans batterie.'],
+  ['ps','Peak shaving','La batterie écrête les pointes (seuils hiver / été réglés automatiquement). Désactivé : elle ne sert qu\'à l\'autoconsommation.'],
+  ['rue','RUE obtenue à l\'enchère','Activé : l\'installation RUE (dès 150 kWc) reçoit le montant RUE par kWc des Paramètres. Désactivé : elle ne reçoit que la RU ordinaire.'],
+  ['allowRue','Autoriser une installation RUE','Désactivé : seule une installation en autoconsommation (RU) est testée, sans injection totale séparée.'],
+  ['grid','Recharge réseau','La batterie peut se recharger sur le réseau jusqu\'à sa réserve (désactivé par défaut).'],
+  ['wk','Réserve libérée le week-end','Du vendredi 22h au dimanche 20h, la batterie se vide pour l\'usine.']];
 let opRun = 0, opData = null, opDrawn = null, opCamRev = 1;
 const opSig = () => [opData && opData.key, OP.crit, OP.view, OP.mode3, opCamRev].join('§');
 function loadPlotly(cb){
@@ -853,16 +859,18 @@ function loadPlotly(cb){
 function opVariant(ru, rue, bat){
   const bc = bat > 0 ? bsFixed(V[1]) + BS.perKwh*bat : 0;
   return Object.assign({}, V[1], {name:'Optimum', acKwc: ru, rueKwc: rue, prodAc: ru*CF.yAc, prodRue: rue*CF.yRue,
-    price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: false});
+    price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: OP.wk});
 }
 const OP_CRIT = {cum: {t: () => `Liquidités à ${Math.round(G.horizon)} ans`, u:'CHF'}, npv: {t: () => 'Gain net actualisé', u:'CHF'}, roi: {t: () => `Liquidités à ${Math.round(G.horizon)} ans par franc investi (net)`, u:'CHF/CHF'}};
 function opVal(c){ return OP.crit === 'npv' ? c.npv : OP.crit === 'roi' ? c.roi : c.cum; }
-function opKey(){ return JSON.stringify([G, BS, CF.yAc, CF.yRue, CF.pKwc, OP.roof, OP.step, OP.bmax, OP.bstep, OP.ps, V[1].acPrice, V[1].batReduc, V[1].batKwh]); }
+function opKey(){ return JSON.stringify([G, BS, CF.yAc, CF.yRue, CF.pKwc, OP.roof, OP.step, OP.bmax, OP.bstep, OP.ps, OP.bat, OP.rue, OP.allowRue, OP.grid, OP.wk, V[1].acPrice, V[1].batReduc, V[1].batKwh]); }
 function renderOP(force){
   ['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el && document.activeElement !== el) el.value = OP[k]; });
   [['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = CF[k]; });
   const bp = document.getElementById('op_perKwh'); if (bp && document.activeElement !== bp) bp.value = BS.perKwh;
-  document.getElementById('op_ps').checked = OP.ps;
+  const ot = document.getElementById('opOpts');
+  ot.innerHTML = OP_OPTS.map(([k,t,d]) => `<label class="sw" title="${d.replace(/"/g,'&quot;')}"><input type="checkbox" data-k="${k}" ${OP[k]?'checked':''} ${(k==='ps'||k==='grid'||k==='wk') && !OP.bat ? 'disabled' : ''} ${k==='rue' && !OP.allowRue ? 'disabled' : ''}><span class="k"></span>${t}</label>`).join('');
+  ot.querySelectorAll('input').forEach(i => i.onchange = () => { OP[i.dataset.k] = i.checked; renderOP(); });
   document.querySelectorAll('#opCrit button').forEach(b => b.classList.toggle('on', b.dataset.c === OP.crit));
   document.querySelectorAll('#opMode3 button').forEach(b => b.classList.toggle('on', b.dataset.m === OP.mode3));
   if (!document.getElementById('tab-opt').classList.contains('active') && !force) return;
@@ -872,16 +880,19 @@ function renderOP(force){
   const RU = [], BAT = [];
   for (let x = 0; x <= OP.roof + 1e-9; x += OP.step) RU.push(Math.round(x));
   if (RU[RU.length-1] < OP.roof - 1) RU.push(Math.round(OP.roof));
-  for (let b = 0; b <= OP.bmax + 1e-9; b += OP.bstep) BAT.push(Math.round(b));
+  for (let b = 0; b <= (OP.bat ? OP.bmax : 0) + 1e-9; b += OP.bstep) BAT.push(Math.round(b));
   const jobs = [];
-  RU.forEach(ru => BAT.forEach(bat => { if (ru === 0 && bat > 0) return; RU.forEach(rue => { if (ru + rue > OP.roof + 1 || ru + rue === 0) return; jobs.push([ru, rue, bat]); }); }));
+  RU.forEach(ru => BAT.forEach(bat => { if (ru === 0 && bat > 0) return; RU.forEach(rue => { if (ru + rue > OP.roof + 1 || ru + rue === 0 || (!OP.allowRue && rue > 0)) return; jobs.push([ru, rue, bat]); }); }));
   const cells = [];
   let n = 0; const t0all = performance.now();
   const step = () => {
     if (run !== opRun) return;
     const t0 = performance.now();
     while (n < jobs.length && performance.now() - t0 < 120){
-      const [ru, rue, bat] = jobs[n++], v = opVariant(ru, rue, bat), r = compute(v), cum = r.rows[H-1].cum;
+      const [ru, rue, bat] = jobs[n++], v = opVariant(ru, rue, bat), keepG = {rueOn: G.rueOn, gridChg: G.gridChg};
+      G.rueOn = OP.rue; G.gridChg = OP.grid;
+      let r; try { r = compute(v); } finally { G.rueOn = keepG.rueOn; G.gridChg = keepG.gridChg; }
+      const cum = r.rows[H-1].cum;
       cells.push({ru, rue, bat, kw: v.batKw, price: r.price, cum, npv: r.npv, roi: cum/Math.max(1, r.price - r.sub), y1: r.year1, sub: r.sub, pay: r.payback, taux: r.tauxAc, T: r.hasBat && r.mode === 0 ? r.T : null, Ts: r.hasBat && r.mode === 0 ? r.Ts : null});
     }
     const pc = n/jobs.length, el = (performance.now() - t0all)/1000;
@@ -958,7 +969,7 @@ function drawOP(){
       <div class="kpi"><b>${fmt(opVal(best))}</b><span>${crit.t()} · ${OP.crit === 'roi' ? '' : (opVal(best) - bref.v >= 0 ? '+' : '') + fCHF(opVal(best) - bref.v) + ' CHF vs ' + bref.n}</span></div>
     </div>
     <p class="cap">Recettes 1re année ${fCHF(best.y1)} CHF · RU + RUE ${fCHF(best.sub)} CHF · payée après ${best.pay != null ? fN(best.pay,1) + ' ans' : '–'} · autoconsommation de la partie RU ${fN(best.taux*100,1)} %${best.T ? ` · seuils de pointe ${fN(best.T)} / ${fN(best.Ts)} kW` : ''}.
-    ${G.rueOn ? `RUE comptée à ${fN(G.rueRate)} CHF/kWc dès 150 kWc (enchère Pronovo, non garantie) : décochez la RUE dans Paramètres pour voir l'optimum sans elle.` : 'RUE désactivée : l\'injection totale ne reçoit que la RU ordinaire.'}
+    Options : ${OP_OPTS.map(([k,t]) => `${t} ${OP[k] ? 'oui' : 'non'}`).join(' · ')} · scénario ${scen().t}. ${OP.allowRue ? (OP.rue ? `RUE comptée à ${fN(G.rueRate)} CHF/kWc dès 150 kWc (enchère Pronovo, non garantie).` : 'RUE non obtenue : l\'injection totale ne reçoit que la RU ordinaire.') : ''} Comparaison avec V1, V2, V3 telles que réglées dans le reste du site.
     Grille : pas de ${fN(OP.step)} kWc et ${fN(OP.bstep)} kWh — affinez avec le configurateur (bouton ci-contre).</p>`;
   const top = cells.slice().sort((a,b) => opVal(b) - opVal(a)).slice(0, 10);
   document.getElementById('opTop').innerHTML = `<thead><tr><th>#</th><th>RU (kWc)</th><th>RUE (kWc)</th><th>Total</th><th>Batterie</th><th>Prix</th><th>RU + RUE</th><th>Recettes 1re année</th><th>Payée après</th><th>${crit.t()}</th></tr></thead><tbody>` +
@@ -972,7 +983,6 @@ function drawOP(){
 ['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el) el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) OP[k] = x; renderOP(); }; });
 [['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) CF[k] = x; renderOP(); }; });
 document.getElementById('op_perKwh').onchange = e => { const x = parseFloat(e.target.value); if (isFinite(x) && x > 0) BS.perKwh = x; renderOP(); };
-document.getElementById('op_ps').onchange = e => { OP.ps = e.target.checked; renderOP(); };
 document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; renderOP(); });
 document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP.mode3 = b.dataset.m; renderOP(); });
 document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
