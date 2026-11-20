@@ -1175,19 +1175,60 @@ function box(x0,x1,y0,y1,z0,z1){
   return {x:[x0,x1,x1,x0,x0,x1,x1,x0], y:[y0,y0,y1,y1,y0,y0,y1,y1], z:[z0,z0,z0,z0,z1,z1,z1,z1],
     i:[0,0,4,4,0,0,1,1,2,2,3,3], j:[1,2,5,6,1,5,2,6,3,7,0,4], k:[2,3,6,7,5,4,6,5,7,6,4,7]};
 }
+// Fusionne plusieurs maillages en un seul (moins de traces, plus rapide)
+function meshJoin(list){ const o = {x:[], y:[], z:[], i:[], j:[], k:[]}; list.forEach(m => { const n = o.x.length; o.x.push(...m.x); o.y.push(...m.y); o.z.push(...m.z); o.i.push(...m.i.map(v=>v+n)); o.j.push(...m.j.map(v=>v+n)); o.k.push(...m.k.map(v=>v+n)); }); return o; }
+const quad = (p) => ({x:p.map(q=>q[0]), y:p.map(q=>q[1]), z:p.map(q=>q[2]), i:[0,0], j:[1,2], k:[2,3]});
+// Rangées de panneaux selon l'orientation : mono-pente (Sud-Ouest = vers −y, Nord-Est = vers +y) ou sheds en toit (Est-Ouest = faîtages le long de y, NO/SE = le long de x)
+function panelRows(z, lift){
+  const [x0,x1,y0,y1] = [z.r[0]+0.8, z.r[1]-0.8, z.r[2]+0.8, z.r[3]-0.8], h = z.h + 0.35, out = [];
+  if (/Sheds|Nord-Ouest/.test(z.ori)){
+    const alongY = /Sheds/.test(z.ori), w = 4.6, rise = 0.9, a0 = alongY ? x0 : y0, a1 = alongY ? x1 : y1;
+    for (let a = a0; a + w <= a1 + 0.01; a += w + 0.5){
+      const m = a + w/2, e = a + w, P = (u, v, zz) => alongY ? [u, v, zz] : [v, u, zz], b0 = alongY ? y0 : x0, b1 = alongY ? y1 : x1;
+      out.push(quad([P(a,b0,h), P(a,b1,h), P(m,b1,h+rise*lift), P(m,b0,h+rise*lift)]));
+      out.push(quad([P(m,b0,h+rise*lift), P(m,b1,h+rise*lift), P(e,b1,h), P(e,b0,h)]));
+    }
+  } else {
+    const sw = !/Nord-Est/.test(z.ori), d = 2.3, pitch = 3.4, rise = 0.65;
+    for (let y = y0; y + d <= y1 + 0.01; y += pitch){
+      const lo = sw ? y : y + d, hi = sw ? y + d : y;
+      out.push(quad([[x0,lo,h],[x1,lo,h],[x1,hi,h+rise*lift],[x0,hi,h+rise*lift]]));
+    }
+  }
+  return out.length ? meshJoin(out) : box(x0,x1,y0,y1,h,h+0.2);
+}
 function mixC(a, b, t){ const p = h => [1,3,5].map(k => parseInt(h.slice(k,k+2),16)); const A = p(a), B = p(b); return '#' + A.map((x,k) => Math.round(x + (B[k]-x)*t).toString(16).padStart(2,'0')).join(''); }
 function drawSite(){
   if (!window.Plotly) return;
   const vi = A3.v, now = a3Now(), sun = sunPos(now.i), light = Math.max(0, Math.min(1, now.shape));
-  const tr = [];
-  const g = box(-70,180,-80,250,-0.3,0); tr.push(Object.assign({type:'mesh3d', color:'#e7ece2', opacity:1, hoverinfo:'skip', flatshading:true}, g));
-  SITE_B.forEach(b => tr.push(Object.assign({type:'mesh3d', color:'#d6d4cd', opacity:1, flatshading:true, hoverinfo:'text', text:new Array(8).fill(b.n), lighting:{ambient:0.6, diffuse:0.7}}, box(b.r[0], b.r[1], b.r[2], b.r[3], 0, b.h))));
+  const tr = [], M = (o, m) => tr.push(Object.assign({type:'mesh3d', flatshading:true, hoverinfo:'skip', lighting:{ambient:0.62, diffuse:0.75, specular:0.15, roughness:0.8}, lightposition:{x:-1000, y:-2000, z:3000}}, o, m));
+  // environnement : terrain, routes, parking, voie ferrée, voisins
+  M({color:'#dfe6d6'}, box(-95,200,-110,280,-0.4,0));
+  M({color:'#a9aaa3'}, box(-62,-48,-110,280,0,0.08)); M({color:'#c8c6bd'}, box(-48,-44,-110,280,0,0.06));
+  M({color:'#a9aaa3'}, box(-95,200,-60,-50,0,0.08)); M({color:'#bdbab1'}, box(95,150,-48,40,0,0.06)); M({color:'#bdbab1'}, box(-40,-26,-30,55,0,0.06));
+  M({color:'#8a8780'}, box(-82,-76,-110,280,0,0.25)); M({color:'#8a8780'}, box(-72,-66,-110,280,0,0.25));
+  [[120,150,50,95,7],[140,185,-35,15,6],[-40,-25,200,230,6],[115,135,195,240,9]].forEach(n => M({color:'#ece9e2', hoverinfo:'text', text:new Array(8).fill('Bâtiment voisin (indicatif)')}, box(n[0],n[1],n[2],n[3],0,n[4])));
+  // bâtiments : volumes, façades vitrées, acrotères, lanterneaux
+  SITE_B.forEach(b => {
+    const [x0,x1,y0,y1] = b.r, hh = b.h;
+    M({color:'#d9d6cf', hoverinfo:'text', text:new Array(8).fill(b.n)}, box(x0,x1,y0,y1,0,hh));
+    M({color:'#5f6b75'}, meshJoin([box(x0-0.15,x1+0.15,y0-0.15,y0,hh*0.45,hh*0.62), box(x0-0.15,x1+0.15,y1,y1+0.15,hh*0.45,hh*0.62), box(x0-0.15,x0,y0,y1,hh*0.45,hh*0.62), box(x1,x1+0.15,y0,y1,hh*0.45,hh*0.62)]));
+    M({color:'#efede7'}, meshJoin([box(x0,x1,y0,y0+0.5,hh,hh+0.9), box(x0,x1,y1-0.5,y1,hh,hh+0.9), box(x0,x0+0.5,y0,y1,hh,hh+0.9), box(x1-0.5,x1,y0,y1,hh,hh+0.9)]));
+  });
+  M({color:'#2b2f33'}, meshJoin([box(57,61,140,144,10,10.9), box(74,78,112,116,10,10.9), box(100,104,150,154,10,10.9)]));
+  M({color:'#7d8a8f'}, box(52,88,10,13,8,8.6));
+  // arbres
+  const trees = [[150,120],[160,140],[170,100],[155,180],[175,160],[165,60],[-30,150],[-35,110],[-28,70],[130,-70],[100,-80],[60,-85],[-20,-80],[185,20],[178,200]];
+  tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]), y:trees.map(t=>t[1]), z:trees.map(()=>6), marker:{size:15, color:'#5d7f4a', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
+  tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]+3), y:trees.map(t=>t[1]-2), z:trees.map(()=>9), marker:{size:11, color:'#6f9457', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
+  // panneaux : rangées inclinées selon l'orientation, couleur selon la variante, éclat selon la production
   const zoneIdx = [];
   SITE_Z.forEach((z, k) => {
-    const role = z.role[vi], base = ROLE[role].c, col = role === 'off' ? base : mixC(mixC(base, '#0d1b2a', 0.55*(1 - light)), '#ffffff', 0.28*light);
+    const role = z.role[vi], base = ROLE[role].c, col = A3.zone === k ? '#eda100' : role === 'off' ? base : mixC(mixC(base, '#0d1b2a', 0.55*(1 - light)), '#ffffff', 0.28*light);
     const txt = `${z.id} · ${ROLE[role].t}<br>${role === 'off' ? 'retiré en V3' : `${fN(z.kwc[vi],1)} kWc · ${z.ori}`}`;
     zoneIdx.push(tr.length);
-    tr.push(Object.assign({type:'mesh3d', color: A3.zone === k ? '#eda100' : col, opacity:1, flatshading:true, hoverinfo:'text', text:new Array(8).fill(txt), lighting:{ambient:0.75, diffuse:0.6, specular:0.3}}, box(z.r[0]+0.6, z.r[1]-0.6, z.r[2]+0.6, z.r[3]-0.6, z.h, z.h + (role === 'off' ? 0.15 : 0.7))));
+    const geo = role === 'off' ? box(z.r[0]+0.8, z.r[1]-0.8, z.r[2]+0.8, z.r[3]-0.8, z.h, z.h + 0.12) : panelRows(z, 1);
+    M({color: col, hoverinfo:'text', text:new Array(geo.x.length).fill(txt), lighting:{ambient:0.55, diffuse:0.85, specular:0.55, roughness:0.35, fresnel:0.3}}, geo);
   });
   // soleil (direction réelle) et nord
   const toLocal = (az) => [Math.cos((az - 125)*Math.PI/180), Math.cos((az - 35)*Math.PI/180)];
@@ -1214,7 +1255,7 @@ function drawSite(){
     const pz = role === 'ru' ? now.P*share : role === 'rue' ? now.Prue*share : 0;
     zi = `<div class="zinfo" style="border-left:4px solid ${ROLE[role].c}"><b>${z.id}</b> · ${ROLE[role].t}<br>${role === 'off' ? 'Zone sans panneaux dans cette variante.' : `${fN(vi === 2 && z.note3 ? 1440 : z.mod)} modules · ${fN(vi === 2 && z.note3 ? 2939.3 : z.m2,1)} m² · <b>${fN(z.kwc[vi],1)} kWc</b> · ${z.ori}<br>Production à cet instant : <b>${fN(pz)} kW</b> (≈ ${fN(share*100,1)} % de la partie ${role === 'ru' ? 'autoconsommation' : 'injection totale'})`}</div>`;
   }
-  document.getElementById('a3SiteInfo').innerHTML = `<div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
+  document.getElementById('a3SiteInfo').innerHTML = `<div class="reallinks"><a class="btn sm" target="_blank" rel="noopener" href="https://map.geo.admin.ch/#/map?lang=fr&3d&swisssearch=Chemin%20du%20Devin%203%201510%20Moudon">Voir le site réel en 3D (swisstopo)</a><a class="btn sm" target="_blank" rel="noopener" href="https://earth.google.com/web/search/Chemin+du+Devin+3,+1510+Moudon,+Suisse">Ouvrir dans Google Earth</a></div><div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
       <div class="kpi"><b>${fN(now.P + now.Prue)} kW</b><span>Production totale${v.rueKwc > 0 ? ` (dont RUE ${fN(now.Prue)} kW)` : ''}</span></div>
       <div class="kpi"><b>${fN(now.L)} kW</b><span>Consommation de l'usine</span></div>
       <div class="kpi"><b>${sun.el > 0 ? fN(sun.el,0)+'°' : 'nuit'}</b><span>Hauteur du soleil${sun.el > 0 ? ` · azimut ${fN(sun.az,0)}°` : ''}</span></div>
