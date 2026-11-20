@@ -16,11 +16,11 @@ const MONTHS = ['oct. 25','nov. 25','déc. 25','janv. 26','févr. 26','mars 26',
 
 /* ---------------- Paramètres par défaut (fichiers) ---------------- */
 const DEF_VAR = [
-  {name:'V1 · RU + RUE', acKwc:1005.48, prodAc:906096, rueKwc:3195.29, prodRue:3534250, price:3171600,
+  {name:'V1 · Mixte autoconsommation + injection', acKwc:1005.48, prodAc:906096, rueKwc:3195.29, prodRue:3534250, price:3171600,
    batOn:true, psOn:true, batKwh:514, batKw:250, batReduc:99336, acPrice:0.097, T:730, R:0.8, Rs:0.8},
-  {name:'V2 · Tout en autoconsommation', acKwc:4200.77, prodAc:4576824, rueKwc:0, prodRue:0, price:3276600,
+  {name:'V2 · Autoconsommation toiture complète', acKwc:4200.77, prodAc:4576824, rueKwc:0, prodRue:0, price:3276600,
    batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:199024, acPrice:0.097, T:640, R:1, Rs:1},
-  {name:'V3 · RU, moins de panneaux', acKwc:2912.07, prodAc:3114100, rueKwc:0, prodRue:0, price:2169500,
+  {name:'V3 · Autoconsommation surface réduite', acKwc:2912.07, prodAc:3114100, rueKwc:0, prodRue:0, price:2169500,
    batOn:true, psOn:true, batKwh:1000, batKw:500, batReduc:220222, acPrice:0.097, T:650, R:1, Rs:1},
 ];
 const DEF_GLOB = {rev:0.0741, puiss:9.47, prixQ:0.0282, rueOn:true, rueRate:520, ru1:360, ru2:300, ru3:250,
@@ -83,6 +83,8 @@ const scen = () => PS_SCEN[G.psScen] || PS_SCEN.real;
 try { const s = JSON.parse(localStorage.getItem('moudon_state')); if (s && s.V && s.G) { V = s.V; G = Object.assign({}, DEF_GLOB, s.G); } } catch (e) {}
 // Mise à jour des valeurs enregistrées dans le navigateur : batterie V1 = 2 × ST255CS (514 kWh / 250 kW)
 if (V[0] && V[0].batKwh === 500 && V[0].batKw === 125){ V[0].batKwh = 514; V[0].batKw = 250; }
+// noms des variantes toujours ceux du site (anciens noms enregistrés remplacés)
+V.forEach((v, i) => { if (DEF_VAR[i]) v.name = DEF_VAR[i].name; });
 function save(){ try { localStorage.setItem('moudon_state', JSON.stringify({V, G})); } catch (e) {} }
 
 /* ---------------- Préparation des séries ---------------- */
@@ -1084,7 +1086,7 @@ function a3Tabs(){
   mk('a3Top', [[0,'Relief 3D'],[1,'Vue de dessus']], A3.top?1:0, k => { A3.top = k === '1'; renderA3(); });
   const cbm = document.getElementById('a3Miss'); if (cbm){ cbm.checked = A3.showMiss !== false; cbm.onchange = () => { A3.showMiss = cbm.checked; drawCarpet(); }; }
   mk('a3Roll', [[1,'Défilement : jours passés masqués'],[0,'Toute l\'année']], A3.roll !== false ? 1 : 0, k => { A3.roll = k === '1'; renderA3(); });
-  mk('a3Var2', V.map((v,i)=>[i, v.name]), A3.v, k => { A3.v = +k; A3.zone = null; renderA3(); });
+  mk('a3Var2', V.map((v,i)=>[i, v.name.split(' · ')[0] + ' · ' + ['Mixte', 'Toiture complète', 'Surface réduite'][i]]), A3.v, k => { A3.v = +k; A3.zone = null; renderA3(); });
 }
 function renderA3(){
   if (!document.getElementById('tab-a3').classList.contains('active')) return;
@@ -2373,11 +2375,24 @@ function pageCost(i){
   return `<div class="xlpage wide"><div style="font:700 13px Arial;margin-bottom:6px">Fichier Vert · ${r.v.name}</div><div class="tablewrap">${t}</div></div>`;
 }
 const barLabels = {id:'barLabels', afterDatasetsDraw(ch, a, o){ const ds = ch.data.datasets[0], m = ch.getDatasetMeta(0), ctx = ch.ctx; if (!o || !o.idx) return;
-  ctx.save(); ctx.font = '10px Arial'; ctx.fillStyle = '#000'; ctx.textAlign = 'center';
-  o.idx.forEach(k => { const el = m.data[k]; if (!el) return; const t = 'SFr. ' + fCHF(ds.data[k]), w = ctx.measureText(t).width; const x = Math.min(el.x, ch.chartArea.right - w/2); ctx.fillStyle = '#fff'; ctx.fillRect(x - w/2 - 2, el.y - 26, w + 4, 13); ctx.fillStyle = '#000'; ctx.fillText(t, x, el.y - 16); ctx.beginPath(); ctx.moveTo(el.x, el.y - 12); ctx.lineTo(el.x, el.y - 2); ctx.stroke(); }); ctx.restore(); }};
+  // liquidités à 20 / 25 / 30 ans : badges alignés en haut à droite, reliés à leur barre
+  const F = Math.max(13, Math.round(ch.width/46)), F2 = Math.round(F*0.72), A = ch.chartArea;
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  ctx.save(); ctx.font = `700 ${F}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const items = o.idx.map(k => ({k, el:m.data[k], t:'SFr. ' + fCHF(ds.data[k]) + '.-', lab:ch.data.labels[k] + ' ans'})).filter(x => x.el);
+  const w = Math.max(...items.map(x => ctx.measureText(x.t).width)) + F*1.4, h = F*2.5, gap = F*0.8, y = A.top - h - F*0.6;
+  items.forEach((it, j) => {
+    const x = A.right - (items.length - 1 - j)*(w + gap) - w/2;
+    ctx.strokeStyle = '#1c3d5a'; ctx.lineWidth = Math.max(1, F/12); ctx.beginPath(); ctx.moveTo(x, y + h); ctx.lineTo(it.el.x, it.el.y - F*0.3); ctx.stroke();
+    ctx.fillStyle = '#1c3d5a'; ctx.beginPath(); ctx.arc(it.el.x, it.el.y - F*0.3, F*0.18, 0, 2*Math.PI); ctx.fill();
+    ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = F/3; ctx.shadowOffsetY = F/12; rr(x - w/2, y, w, h, F*0.45); ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.font = `700 ${F2}px Arial`; ctx.fillStyle = '#9fc9ef'; ctx.fillText(it.lab.toUpperCase(), x, y + h*0.3);
+    ctx.font = `700 ${F}px Arial`; ctx.fillStyle = '#ffffff'; ctx.fillText(it.t, x, y + h*0.68);
+  });
+  ctx.restore(); }};
 function drawXlCharts(i){
   const fl = actFlux(i), lab = fl.map(x=>x.n);
-  const opt = (lbl) => ({layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, tooltip:tipCHF, barLabels:lbl}, scales:{x:{grid:{display:false}, ticks:{font:{size:9}}}, y:{grid:{color:'#000', lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}});
+  const opt = (lbl) => ({layout:{padding:{top:lbl && lbl.idx ? 58 : 22, right:12}}, plugins:{legend:{display:false}, tooltip:tipCHF, barLabels:lbl}, scales:{x:{grid:{display:false}, ticks:{font:{size:9}}}, y:{grid:{color:'#000', lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}});
   chart('xgCf'+i, {type:'bar', data:{labels:lab, datasets:[{data:fl.map(x=>x.cf), backgroundColor:'#1a1a1a', barPercentage:.35}]}, options:opt({}), plugins:[barLabels]});
   chart('xgLq'+i, {type:'bar', data:{labels:lab, datasets:[{data:fl.map(x=>x.cum), backgroundColor:fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), borderColor:'#1a1a1a', borderWidth:fl.map(x=>[20,25,30].includes(x.n)?1:0), barPercentage:.45}]}, options:opt({idx:[19,24,29]}), plugins:[barLabels]});
 }
@@ -2422,7 +2437,7 @@ function reportAct(only, compact){
     // Old Soleol : uniquement le Tableau client et le Graph de chaque variante
     let h = '';
     RES.forEach((r, i) => { if (only !== null && i !== only) return;
-      const fl = actFlux(i), mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
+      const fl = actFlux(i), mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:idx && idx.length ? 110 : 22, right:16}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}, ticks:{font:{size:18}}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{font:{size:18}, callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
       const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
         .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`)
         .replace('<div class="xfoot">Collaborateur Soleol HBA</div>', '');
@@ -2441,7 +2456,7 @@ function reportAct(only, compact){
   RES.forEach((r,i) => {
     if (only !== null && i !== only) return;
     const fl = actFlux(i);
-    const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
+    const mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:idx && idx.length ? 110 : 22, right:16}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}, ticks:{font:{size:18}}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{font:{size:18}, callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
     const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
                           .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`);
     h += `${pageFlux(i)}${g}${pageCost(i)}`;
