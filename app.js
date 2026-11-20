@@ -266,7 +266,7 @@ const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.pa
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP(); renderA3();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -1066,6 +1066,158 @@ document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP
 document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
 document.getElementById('opCam').onclick = () => { opCamRev++; drawOP(); };
 document.getElementById('opGo').onclick = () => { opData = null; renderOP(true); };
+
+
+/* ---------------- Analyse 3D : tapis de l'année, carte de risque, pilotage ---------------- */
+const A3 = {v: 1, q: 'grid', top: false, rv: 'cum', pv: 1, pz: 'y1'};
+let a3RiskRun = 0, a3Risk = null, a3PilRun = 0, a3Pil = null;
+const A3Q = {load:{t:'Consommation de l\'usine', u:'kW'}, pv:{t:'Production solaire (partie autoconsommation)', u:'kW'}, grid:{t:'Soutirage au réseau', u:'kW'},
+  exp:{t:'Surplus revendu', u:'kW'}, cut:{t:'Pointe écrêtée par la batterie', u:'kW'}, soc:{t:'État de charge de la batterie', u:'kWh'}};
+const a3font = {family:'Helvetica Neue, Arial, sans-serif', size:12, color:'#1a1a19'};
+const a3scale = [[0,'#f4f1ea'],[0.35,'#8fb3d6'],[0.7,'#2a5c8a'],[1,'#132a40']];
+function a3Tabs(){
+  const mk = (id, items, cur, cb) => { const el = document.getElementById(id); el.innerHTML = items.map(([k,t]) => `<button data-k="${k}" class="${String(k)===String(cur)?'on':''}">${t}</button>`).join(''); el.querySelectorAll('button').forEach(b => b.onclick = () => cb(b.dataset.k)); };
+  mk('a3Var', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.v, k => { A3.v = +k; renderA3(); });
+  mk('a3Q', Object.entries(A3Q).map(([k,o])=>[k, o.t.split(' (')[0]]), A3.q, k => { A3.q = k; renderA3(); });
+  mk('a3Top', [[0,'Relief 3D'],[1,'Vue de dessus']], A3.top?1:0, k => { A3.top = k === '1'; renderA3(); });
+  mk('a3Rv', [['cum',`Liquidités à ${Math.round(G.horizon)} ans`],['npv','Gain net actualisé']], A3.rv, k => { A3.rv = k; drawRisk(); });
+  mk('a3Pv', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.pv, k => { A3.pv = +k; renderA3(); });
+  mk('a3Pz', [['y1','Recettes 1re année'],['peak','Gain de pointe par an']], A3.pz, k => { A3.pz = k; drawPil(); });
+}
+function renderA3(){
+  if (!document.getElementById('tab-a3').classList.contains('active')) return;
+  a3Tabs();
+  loadPlotly(() => { drawCarpet(); runRisk(); runPil(); });
+}
+// 1) Tapis de l'année : jours × heures × puissance
+function drawCarpet(){
+  const r = RES[A3.v], S = YEAR, a = r.r, v = r.v, q = A3.q, nd = Math.floor(S.n/96);
+  const Z = Array.from({length:24}, () => new Array(nd).fill(0)), TH = Array.from({length:24}, () => new Array(nd).fill(null));
+  const days = [], ticks = [], tickt = [], MO = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  for (let d = 0; d < nd; d++){
+    const dt = new Date(S.t0 + d*86400000); days.push(dt.toISOString().slice(0,10));
+    if (dt.getUTCDate() === 1){ ticks.push(d); tickt.push(MO[dt.getUTCMonth()] + ' ' + String(dt.getUTCFullYear()).slice(2)); }
+    for (let h = 0; h < 24; h++){
+      let s = 0, t = null;
+      for (let k = 0; k < 4; k++){
+        const i = d*96 + h*4 + k, x = S.load[i] - v.prodAc*S.pv[i];
+        s += q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : (a.kind[i] === 3 ? a.dis15[i] : 0);
+        if (q === 'grid' && r.hasBat && r.mode === 0 && isFinite(a.thr[i])) t = Math.max(t ?? 0, a.thr[i]);
+      }
+      Z[h][d] = q === 'grid' || q === 'cut' ? Math.max(...[0,1,2,3].map(k => { const i = d*96+h*4+k; return q === 'grid' ? Math.max(a.grid[i],0) : (a.kind[i] === 3 ? a.dis15[i] : 0); })) : s/4;
+      TH[h][d] = t;
+    }
+  }
+  const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`;
+  const cd = hrs.map(() => days);
+  const traces = A3.top
+    ? [{type:'heatmap', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}]
+    : [{type:'surface', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}, lighting:{ambient:0.8, diffuse:0.5, specular:0.05}}];
+  if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:days.map((_,d)=>d), y:hrs, z:TH, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip', name:'Seuil'});
+  const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt};
+  const ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
+  Plotly.react('a3Carpet', traces, A3.top
+    ? {margin:{l:60,r:20,t:10,b:50}, height:430, font:a3font, xaxis:xa, yaxis:ya, uirevision:'carpet'}
+    : {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, uirevision:'carpet', scene:{xaxis:xa, yaxis:ya, zaxis:{title:{text:o.u}}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
+    {responsive:true, displaylogo:false, scrollZoom:false});
+  const T = {load:'Les crêtes du matin en hiver et les journées de semaine ressortent ; le week-end forme des creux réguliers.',
+    pv:'La production monte en été et en milieu de journée ; les journées grises font des creux.',
+    grid:`Chaque pic est soutiré au réseau. ${r.hasBat && r.mode===0 ? 'La nappe rouge transparente est le seuil de pointe du mois : tout ce qui la dépasse est facturé comme pointe. ' : ''}Le solaire creuse la mi-journée, surtout en été.`,
+    exp:'Le surplus revendu apparaît en milieu de journée, surtout les week-ends d\'été quand l\'usine consomme peu.',
+    cut:'Chaque pic montre un moment où la batterie coupe une pointe : surtout tôt le matin et le soir, et davantage en hiver.',
+    soc:'Bleu foncé = batterie pleine, clair = vide. On voit les jours d\'hiver où elle se vide sur les pointes et met du temps à se recharger au soleil.'};
+  document.getElementById('a3CarpetTxt').textContent = `${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+}
+// 2) Carte de risque : prix de revente × montant RUE
+function runRisk(){
+  const key = JSON.stringify([G, V, OP.crit]);
+  if (a3Risk && a3Risk.key === key){ drawRisk(); return; }
+  const run = ++a3RiskRun, X = [], Y = [], st = document.getElementById('a3RiskSt');
+  for (let x = 4; x <= 10.001; x += 0.5) X.push(+x.toFixed(1));
+  for (let y = 0; y <= 620; y += 40) Y.push(y);
+  const cum = V.map(() => Y.map(() => new Array(X.length).fill(null))), npv = V.map(() => Y.map(() => new Array(X.length).fill(null)));
+  const jobs = []; X.forEach((x,i) => Y.forEach((y,j) => V.forEach((v,k) => jobs.push([i,j,k]))));
+  let n = 0;
+  const step = () => {
+    if (run !== a3RiskRun) return;
+    const t0 = performance.now(), keep = {rev:G.rev, rueOn:G.rueOn, rueRate:G.rueRate};
+    try {
+      while (n < jobs.length && performance.now() - t0 < 120){
+        const [i,j,k] = jobs[n++]; G.rev = X[i]/100; G.rueOn = true; G.rueRate = Y[j];
+        const r = compute(V[k]); cum[k][j][i] = r.rows[r.rows.length-1].cum; npv[k][j][i] = r.npv;
+      }
+    } finally { Object.assign(G, keep); }
+    st.textContent = n < jobs.length ? `Calcul ${Math.round(n/jobs.length*100)} %…` : `${jobs.length} cas calculés`;
+    if (n < jobs.length){ setTimeout(step, 0); return; }
+    a3Risk = {key, X, Y, cum, npv}; drawRisk();
+  };
+  st.textContent = 'Calcul…'; setTimeout(step, 30);
+}
+function drawRisk(){
+  if (!a3Risk || !window.Plotly) return;
+  const {X, Y} = a3Risk, Z = a3Risk[A3.rv], H = Math.round(G.horizon);
+  const hov = V.map((v,k) => Y.map((y,j) => X.map((x,i) => `${v.name.split(' · ')[0]}<br>Revente ${fN(x,1)} ct · RUE ${fN(y)} CHF/kWc<br><b>${fCHF(Z[k][j][i])} CHF</b>`)));
+  const cur = V.map((v,k) => { const r = RES[k]; return A3.rv === 'npv' ? r.npv : r.rows[r.rows.length-1].cum; });
+  Plotly.react('a3Risk', V.map((v,k) => ({type:'surface', x:X, y:Y, z:Z[k], name:v.name.split(' · ')[0], showscale:false, opacity:0.85,
+      colorscale:[[0,COLORS[k]],[1,COLORS[k]]], text:hov[k], hoverinfo:'text', showlegend:true}))
+    .concat([{type:'scatter3d', mode:'markers+text', x:V.map(()=>G.rev*100), y:V.map(()=>G.rueOn ? G.rueRate : 0), z:cur, text:V.map(v=>v.name.split(' · ')[0]+' aujourd\'hui'), textfont:{size:11},
+      marker:{size:5, color:'#000'}, hoverinfo:'text', showlegend:false}]),
+    {margin:{l:0,r:0,t:0,b:0}, height:520, font:a3font, uirevision:'risk', legend:{x:0, y:1},
+     scene:{xaxis:{title:{text:'Prix de revente (ct/kWh)'}}, yaxis:{title:{text:'RUE (CHF/kWc)'}}, zaxis:{title:{text:'CHF'}}, camera:{eye:{x:-1.5, y:-1.9, z:0.75}}, dragmode:'turntable'}},
+    {responsive:true, displaylogo:false, scrollZoom:false});
+  // carte 2D : quelle variante gagne
+  const W = Y.map((y,j) => X.map((x,i) => { let b = 0; for (let k = 1; k < V.length; k++) if (Z[k][j][i] > Z[b][j][i]) b = k; return b; }));
+  const D = Y.map((y,j) => X.map((x,i) => { const s = V.map((v,k)=>Z[k][j][i]).sort((a,b)=>b-a); return s[0]-s[1]; }));
+  const txt = Y.map((y,j) => X.map((x,i) => `Revente ${fN(x,1)} ct · RUE ${fN(y)} CHF/kWc<br><b>${V[W[j][i]].name.split(' · ')[0]}</b> devant de ${fCHF(D[j][i])} CHF`));
+  Plotly.react('a3Win', [
+    {type:'heatmap', x:X, y:Y, z:W, text:txt, hoverinfo:'text', zmin:-0.5, zmax:V.length-0.5, showscale:false, colorscale:[[0,COLORS[0]],[0.333,COLORS[0]],[0.334,COLORS[1]],[0.666,COLORS[1]],[0.667,COLORS[2]],[1,COLORS[2]]], xgap:1, ygap:1},
+    {type:'scatter', mode:'markers+text', x:[G.rev*100], y:[G.rueOn ? G.rueRate : 0], text:['Aujourd\'hui'], textposition:'top center', marker:{symbol:'star', size:16, color:'#fff', line:{color:'#000', width:1.5}}, hoverinfo:'skip'},
+    {type:'scatter', mode:'lines', x:[X[0], X[X.length-1]], y:[252,252], line:{color:'#000', dash:'dot', width:1}, hoverinfo:'skip'}],
+    {margin:{l:60,r:10,t:10,b:50}, height:360, font:a3font, showlegend:false, xaxis:{title:{text:'Prix de revente (ct/kWh)'}}, yaxis:{title:{text:'RUE (CHF/kWc)'}},
+     annotations:[{x:X[X.length-1], y:252, xanchor:'right', yanchor:'bottom', text:'≈ RU ordinaire (RUE refusée)', showarrow:false, font:{size:10}}]},
+    {responsive:true, displaylogo:false});
+  document.getElementById('a3RiskTxt').innerHTML = `Couleurs : <b style="color:${COLORS[0]}">V1</b>, <b style="color:${COLORS[1]}">V2</b>, <b style="color:${COLORS[2]}">V3</b>. Seule V1 a une installation RUE : sa surface monte avec le montant RUE, celles de V2 et V3 n'en dépendent pas. La ligne pointillée (≈ 252 CHF/kWc) correspond à la RU ordinaire si la RUE n'est pas obtenue à l'enchère. ${A3.rv==='cum' ? `Critère : liquidités à ${H} ans.` : 'Critère : gain net actualisé.'} Les autres paramètres sont ceux du site (pilotage, précision, réglages des variantes).`;
+}
+// 3) Pilotage : seuil d'hiver × seuil d'été
+function runPil(){
+  const r0 = RES[A3.pv], key = JSON.stringify([G, V[A3.pv]]), st = document.getElementById('a3PilSt');
+  if (a3Pil && a3Pil.key === key){ drawPil(); return; }
+  if (!r0.hasBat || r0.mode !== 0){ a3Pil = {key, none:true}; drawPil(); return; }
+  const run = ++a3PilRun, TW = [], TS = [];
+  for (let t = 600; t <= 960; t += 20) TW.push(t);
+  for (let t = 480; t <= 960; t += 20) TS.push(t);
+  const y1 = TS.map(() => new Array(TW.length).fill(null)), pk = TS.map(() => new Array(TW.length).fill(null));
+  let n = 0; const N = TW.length*TS.length;
+  const step = () => {
+    if (run !== a3PilRun) return;
+    const t0 = performance.now();
+    while (n < N && performance.now() - t0 < 120){
+      const i = n % TW.length, j = Math.floor(n / TW.length); n++;
+      const r = altRun(r0.v, TW[i], r0.R, r0.Rs, undefined, TS[j]); y1[j][i] = r.year1; pk[j][i] = r.sPeak;
+    }
+    st.textContent = n < N ? `Calcul ${Math.round(n/N*100)} %…` : `${N} réglages calculés`;
+    if (n < N){ setTimeout(step, 0); return; }
+    a3Pil = {key, TW, TS, y1, peak: pk}; drawPil();
+  };
+  st.textContent = 'Calcul…'; setTimeout(step, 30);
+}
+function drawPil(){
+  if (!a3Pil || !window.Plotly) return;
+  const r0 = RES[A3.pv], el = document.getElementById('a3PilTxt');
+  if (a3Pil.none){ Plotly.purge('a3Pil'); el.textContent = `${r0.v.name} : pas de batterie ou peak shaving désactivé, rien à régler.`; return; }
+  const {TW, TS} = a3Pil, Z = a3Pil[A3.pz];
+  let bi = 0, bj = 0; TS.forEach((_,j) => TW.forEach((_,i) => { if (Z[j][i] > Z[bj][bi]){ bj = j; bi = i; } }));
+  const cz = A3.pz === 'peak' ? r0.sPeak : r0.year1, flat = TS.reduce((a,_,j) => a + TW.filter((_,i) => Z[j][i] >= Z[bj][bi] - 1000).length, 0);
+  Plotly.react('a3Pil', [
+    {type:'surface', x:TW, y:TS, z:Z, colorscale:a3scale, colorbar:{title:{text:'CHF/an'}, thickness:12}, hovertemplate:'Hiver %{x} kW · été %{y} kW<br><b>%{z:,.0f} CHF</b><extra></extra>', contours:{z:{show:true, usecolormap:true, highlightcolor:'#000', project:{z:true}}}},
+    {type:'scatter3d', mode:'markers+text', x:[r0.T], y:[r0.Ts], z:[cz], text:[TW[bi] === r0.T && TS[bj] === r0.Ts ? 'Réglage choisi = meilleur' : 'Réglage choisi'], marker:{size:7, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, hoverinfo:'text', hovertext:[`Réglage choisi : ${seuilTxt(r0)}`]},
+    {type:'scatter3d', mode:'markers+text', x:[TW[bi]], y:[TS[bj]], z:[Z[bj][bi]], text:[TW[bi] === r0.T && TS[bj] === r0.Ts ? '' : 'Meilleur après coup'], marker:{size:6, color:'#b3261e'}, hoverinfo:'text', hovertext:[`Meilleur sur l'année simulée : ${TW[bi]} / ${TS[bj]} kW`]}],
+    {margin:{l:0,r:0,t:0,b:0}, height:520, font:a3font, showlegend:false, uirevision:'pil',
+     scene:{xaxis:{title:{text:'Seuil d\'hiver (kW)'}}, yaxis:{title:{text:'Seuil d\'été (kW)'}}, zaxis:{title:{text:'CHF/an'}}, camera:{eye:{x:1.6, y:-1.6, z:0.9}}, dragmode:'turntable'}},
+    {responsive:true, displaylogo:false, scrollZoom:false});
+  const gap = Z[bj][bi] - cz;
+  el.innerHTML = `${r0.v.name} : réglage choisi ${seuilTxt(r0)}${r0.Tcal ? ' (par mois : point placé sur ses seuils d\'hiver / été de départ)' : ''}, meilleur après coup ${TW[bi]} / ${TS[bj]} kW, écart <b>${fCHF(gap)} CHF/an</b>. ${flat} réglages sur ${TW.length*TS.length} sont à moins de 1'000 CHF/an du meilleur : ${flat > 40 ? 'le sommet est un <b>plateau large</b>, le réglage est robuste (une petite erreur de seuil coûte peu).' : flat > 12 ? 'le sommet est <b>assez large</b>, le réglage est raisonnablement robuste.' : 'le sommet est <b>étroit</b> : le seuil doit être réglé avec soin et vérifié sur les factures.'} Réserves fixées à celles du réglage choisi.`;
+}
 
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
