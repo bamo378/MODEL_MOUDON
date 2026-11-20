@@ -193,3 +193,5 @@ table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;
 
 .vsw{display:flex;gap:6px;align-items:center;justify-content:flex-end;padding:6px 24px;background:#1c3d5a;color:#fff;font-size:12px}.vsw a{color:#fff;text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.5);border-radius:5px}.vsw a.on{background:#fff;color:#1c3d5a;font-weight:600}
 @media print{.vsw{display:none!important}}
+.opprog{height:4px;background:#e3e2dc;border-radius:2px;overflow:hidden}.opprog div{height:100%;width:0;background:#1c3d5a;transition:width .2s}
+#opMap,#op3d{width:100%}

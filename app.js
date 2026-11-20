@@ -233,7 +233,7 @@ const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.pa
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -838,6 +838,143 @@ function cfOptimize(){
   setTimeout(step, 0);
 }
 document.getElementById('cfOpt').onclick = () => cfOptimize();
+
+
+/* ---------------- Version optimale : puissance RU, puissance RUE, batterie ---------------- */
+const OP = {roof: 4201, step: 300, bmax: 1500, bstep: 250, crit: 'cum', view: 'best', mode3: 'surface', ps: true};
+let opRun = 0, opData = null;
+function loadPlotly(cb){
+  if (window.Plotly) return cb();
+  const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js';
+  sc.onload = cb; sc.onerror = () => { document.getElementById('opStatus').textContent = 'Impossible de charger la bibliothèque 3D (connexion).'; };
+  document.head.appendChild(sc);
+}
+function opVariant(ru, rue, bat){
+  const bc = bat > 0 ? bsFixed(V[1]) + BS.perKwh*bat : 0;
+  return Object.assign({}, V[1], {name:'Optimum', acKwc: ru, rueKwc: rue, prodAc: ru*CF.yAc, prodRue: rue*CF.yRue,
+    price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: false});
+}
+const OP_CRIT = {cum: {t: () => `Liquidités à ${Math.round(G.horizon)} ans`, u:'CHF'}, npv: {t: () => 'Gain net actualisé', u:'CHF'}, roi: {t: () => `Liquidités à ${Math.round(G.horizon)} ans par franc investi (net)`, u:'CHF/CHF'}};
+function opVal(c){ return OP.crit === 'npv' ? c.npv : OP.crit === 'roi' ? c.roi : c.cum; }
+function opKey(){ return JSON.stringify([G, BS, CF.yAc, CF.yRue, CF.pKwc, OP.roof, OP.step, OP.bmax, OP.bstep, OP.ps, V[1].acPrice, V[1].batReduc, V[1].batKwh]); }
+function renderOP(force){
+  ['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el && document.activeElement !== el) el.value = OP[k]; });
+  [['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = CF[k]; });
+  const bp = document.getElementById('op_perKwh'); if (bp && document.activeElement !== bp) bp.value = BS.perKwh;
+  document.getElementById('op_ps').checked = OP.ps;
+  document.querySelectorAll('#opCrit button').forEach(b => b.classList.toggle('on', b.dataset.c === OP.crit));
+  document.querySelectorAll('#opMode3 button').forEach(b => b.classList.toggle('on', b.dataset.m === OP.mode3));
+  if (!document.getElementById('tab-opt').classList.contains('active') && !force) return;
+  const key = opKey();
+  if (opData && opData.key === key){ loadPlotly(drawOP); return; }
+  const run = ++opRun, st = document.getElementById('opStatus'), H = Math.max(1, Math.round(G.horizon));
+  const RU = [], BAT = [];
+  for (let x = 0; x <= OP.roof + 1e-9; x += OP.step) RU.push(Math.round(x));
+  if (RU[RU.length-1] < OP.roof - 1) RU.push(Math.round(OP.roof));
+  for (let b = 0; b <= OP.bmax + 1e-9; b += OP.bstep) BAT.push(Math.round(b));
+  const jobs = [];
+  RU.forEach(ru => BAT.forEach(bat => { if (ru === 0 && bat > 0) return; RU.forEach(rue => { if (ru + rue > OP.roof + 1 || ru + rue === 0) return; jobs.push([ru, rue, bat]); }); }));
+  const cells = [];
+  let n = 0; const t0all = performance.now();
+  const step = () => {
+    if (run !== opRun) return;
+    const t0 = performance.now();
+    while (n < jobs.length && performance.now() - t0 < 120){
+      const [ru, rue, bat] = jobs[n++], v = opVariant(ru, rue, bat), r = compute(v), cum = r.rows[H-1].cum;
+      cells.push({ru, rue, bat, kw: v.batKw, price: r.price, cum, npv: r.npv, roi: cum/Math.max(1, r.price - r.sub), y1: r.year1, sub: r.sub, pay: r.payback, taux: r.tauxAc, T: r.hasBat && r.mode === 0 ? r.T : null, Ts: r.hasBat && r.mode === 0 ? r.Ts : null});
+    }
+    const pc = n/jobs.length, el = (performance.now() - t0all)/1000;
+    st.textContent = n < jobs.length ? `Calcul ${Math.round(pc*100)} % · ${n} / ${jobs.length} configurations · encore ~${Math.max(1, Math.round(el/pc - el))} s` : `${jobs.length} configurations calculées en ${Math.round(el)} s · scénario ${scen().t}`;
+    document.getElementById('opBar').style.width = (pc*100) + '%';
+    if (n < jobs.length){ setTimeout(step, 0); return; }
+    opData = {key, cells, RU, BAT, H};
+    loadPlotly(drawOP);
+  };
+  document.getElementById('opBar').style.width = '0%';
+  st.textContent = 'Calcul…'; setTimeout(step, 30);
+}
+function opBest(list){ return list.reduce((b,c) => opVal(c) > opVal(b) ? c : b, list[0]); }
+function drawOP(){
+  if (!opData || !window.Plotly) return;
+  const {cells, RU, BAT, H} = opData, crit = OP_CRIT[OP.crit], best = opBest(cells);
+  // sélecteur de batterie pour la carte et la surface
+  const vs = document.getElementById('opView');
+  vs.innerHTML = `<option value="best">Meilleure batterie pour chaque case</option>` + BAT.map(b => `<option value="${b}">${b ? fN(b)+' kWh / '+fN(b*BS.ratio)+' kW' : 'Sans batterie'}</option>`).join('');
+  vs.value = OP.view;
+  const pick = (ru, rue) => { const l = cells.filter(c => c.ru === ru && c.rue === rue && (OP.view === 'best' || c.bat === +OP.view)); return l.length ? opBest(l) : null; };
+  const Z = RU.map(rue => RU.map(ru => { const c = pick(ru, rue); return c ? opVal(c) : null; }));
+  const Bz = RU.map(rue => RU.map(ru => { const c = pick(ru, rue); return c ? c.bat : null; }));
+  const fmt = x => OP.crit === 'roi' ? fN(x, 2) : fCHF(x);
+  const hover = RU.map(rue => RU.map(ru => { const c = pick(ru, rue); return c ? `RU ${fN(ru)} kWc + RUE ${fN(rue)} kWc = ${fN(ru+rue)} kWc<br>Batterie ${c.bat ? fN(c.bat)+' kWh / '+fN(c.kw)+' kW' : 'aucune'}<br>Prix ${fCHF(c.price)} CHF · RU+RUE ${fCHF(c.sub)} CHF<br>${crit.t()} : <b>${fmt(opVal(c))}</b>` : ''; }));
+  const varPts = RES.map((r,i) => ({x: r.v.acKwc, y: r.v.rueKwc, n: r.v.name.split(' · ')[0], c: COLORS[i]}));
+  const font = {family:'Helvetica Neue, Arial, sans-serif', size:12, color:'#1a1a19'};
+  const scale = [[0,'#f4f1ea'],[0.5,'#8fb3d6'],[1,'#1c3d5a']];
+  // carte 2D
+  Plotly.react('opMap', [
+    {type:'heatmap', x:RU, y:RU, z:Z, text:hover, hoverinfo:'text', colorscale:scale, colorbar:{title:{text:crit.u, side:'right'}, thickness:12}, zsmooth:false, xgap:1, ygap:1},
+    {type:'scatter', mode:'lines', x:[0, OP.roof], y:[OP.roof, 0], line:{color:'#b3261e', dash:'dot', width:1.5}, name:'Toiture pleine', hoverinfo:'skip'},
+    {type:'scatter', mode:'markers+text', x:varPts.map(p=>p.x), y:varPts.map(p=>p.y), text:varPts.map(p=>p.n), textposition:'top right', marker:{size:11, color:varPts.map(p=>p.c), line:{color:'#fff', width:2}}, name:'Variantes actuelles', hoverinfo:'text', hovertext:varPts.map(p=>p.n)},
+    {type:'scatter', mode:'markers+text', x:[best.ru], y:[best.rue], text:['Optimum'], textposition:'bottom right', textfont:{color:'#000', size:13}, marker:{symbol:'star', size:20, color:'#eda100', line:{color:'#000', width:1.5}}, name:'Optimum', hoverinfo:'text', hovertext:[`Optimum : RU ${fN(best.ru)} + RUE ${fN(best.rue)} kWc, batterie ${fN(best.bat)} kWh`]}],
+    {margin:{l:60,r:20,t:10,b:50}, height:470, font, xaxis:{title:{text:'Installation RU, autoconsommation (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, yaxis:{title:{text:'Installation RUE, injection totale (kWc)'}, zeroline:false, range:[-OP.step*0.6, OP.roof + OP.step*0.6]}, legend:{orientation:'h', y:-0.18}, showlegend:true, plot_bgcolor:'#fff', paper_bgcolor:'#fff'},
+    {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d']});
+  // 3D
+  if (OP.mode3 === 'surface'){
+    Plotly.react('op3d', [
+      (() => { const P = []; RU.forEach((rue,j) => RU.forEach((ru,i) => { if (Z[j][i] != null) P.push([ru, rue, Z[j][i], hover[j][i]]); }));
+        return {type:'mesh3d', x:P.map(p=>p[0]), y:P.map(p=>p[1]), z:P.map(p=>p[2]), intensity:P.map(p=>p[2]), colorscale:scale, showscale:false, opacity:0.95, flatshading:false,
+          text:P.map(p=>p[3]), hoverinfo:'text', lighting:{ambient:0.75, diffuse:0.6, specular:0.1}}; })(),
+      {type:'scatter3d', mode:'markers+text', x:[best.ru], y:[best.rue], z:[opVal(best)], text:['Optimum'], marker:{size:7, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, textfont:{size:13}, hoverinfo:'text', hovertext:['Optimum']},
+      {type:'scatter3d', mode:'markers+text', x:varPts.map(p=>p.x), y:varPts.map(p=>p.y), z:RES.map(r => OP.crit === 'npv' ? r.npv : OP.crit === 'roi' ? r.rows[H-1].cum/Math.max(1, r.price - r.sub) : r.rows[H-1].cum), text:varPts.map(p=>p.n), marker:{size:5, color:varPts.map(p=>p.c)}, hoverinfo:'text', hovertext:varPts.map(p=>p.n)}],
+      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, scene:{xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:crit.u}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
+      {responsive:true, displaylogo:false});
+  } else {
+    const vals = cells.map(opVal), lo = Math.min(...vals), hi = Math.max(...vals);
+    Plotly.react('op3d', [
+      {type:'scatter3d', mode:'markers', x:cells.map(c=>c.ru), y:cells.map(c=>c.rue), z:cells.map(c=>c.bat),
+        marker:{size:cells.map(c => 3 + 9*((opVal(c)-lo)/Math.max(1e-9, hi-lo))**2), color:vals, colorscale:scale, opacity:0.85, colorbar:{title:{text:crit.u}, thickness:12}},
+        hoverinfo:'text', hovertext:cells.map(c => `RU ${fN(c.ru)} + RUE ${fN(c.rue)} kWc<br>Batterie ${c.bat ? fN(c.bat)+' kWh' : 'aucune'}<br>${crit.t()} : ${fmt(opVal(c))}`)},
+      {type:'scatter3d', mode:'markers+text', x:[best.ru], y:[best.rue], z:[best.bat], text:['Optimum'], marker:{size:9, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, hoverinfo:'skip'}],
+      {margin:{l:0,r:0,t:0,b:0}, height:520, font, showlegend:false, scene:{xaxis:{title:{text:'RU (kWc)'}}, yaxis:{title:{text:'RUE (kWc)'}}, zaxis:{title:{text:'Batterie (kWh)'}}, camera:{eye:{x:-1.6, y:-1.6, z:0.9}}}, paper_bgcolor:'#fff'},
+      {responsive:true, displaylogo:false});
+  }
+  // courbes autour de l'optimum
+  const atSplit = BAT.map(b => cells.find(c => c.ru === best.ru && c.rue === best.rue && c.bat === b)).filter(Boolean);
+  Plotly.react('opBat', [{type:'scatter', mode:'lines+markers', x:atSplit.map(c=>c.bat), y:atSplit.map(opVal), line:{color:'#1c3d5a', width:2.5}, marker:{size:atSplit.map(c=> c === best ? 12 : 6), color:atSplit.map(c=> c === best ? '#eda100' : '#1c3d5a')}, hovertemplate:'%{x} kWh : %{y:,.0f}<extra></extra>'}],
+    {margin:{l:70,r:10,t:10,b:45}, height:280, font, xaxis:{title:{text:'Batterie (kWh)'}}, yaxis:{title:{text:crit.u}}, plot_bgcolor:'#fff'}, {displaylogo:false, responsive:true});
+  const tot = best.ru + best.rue, line = RU.map(ru => cells.filter(c => c.ru === ru && Math.abs(c.ru + c.rue - tot) < 1 && c.bat === best.bat)[0]).filter(Boolean);
+  Plotly.react('opSplit', [{type:'scatter', mode:'lines+markers', x:line.map(c=>c.ru), y:line.map(opVal), line:{color:'#2a78d6', width:2.5}, marker:{size:line.map(c=> c === best ? 12 : 6), color:line.map(c=> c === best ? '#eda100' : '#2a78d6')}, hovertemplate:'RU %{x} kWc : %{y:,.0f}<extra></extra>'}],
+    {margin:{l:70,r:10,t:10,b:45}, height:280, font, xaxis:{title:{text:`Part RU sur ${fN(tot)} kWc (le reste en RUE)`}}, yaxis:{title:{text:crit.u}}, plot_bgcolor:'#fff'}, {displaylogo:false, responsive:true});
+  // synthèse
+  const ref = RES.map(r => ({n: r.v.name.split(' · ')[0], v: OP.crit === 'npv' ? r.npv : OP.crit === 'roi' ? r.rows[H-1].cum/Math.max(1, r.price - r.sub) : r.rows[H-1].cum}));
+  const bref = ref.reduce((a,b) => b.v > a.v ? b : a);
+  document.getElementById('opBest').innerHTML = `
+    <div class="kpirow" style="grid-template-columns:repeat(5,1fr);margin:0">
+      <div class="kpi"><b>${fN(best.ru)} kWc</b><span>Installation RU (autoconsommation)</span></div>
+      <div class="kpi"><b>${fN(best.rue)} kWc</b><span>Installation RUE (injection totale)</span></div>
+      <div class="kpi"><b>${best.bat ? fN(best.bat)+' kWh / '+fN(best.kw)+' kW' : 'aucune'}</b><span>Batterie (sur la partie RU)</span></div>
+      <div class="kpi"><b>${fN(tot)} kWc</b><span>Puissance totale · ${fCHF(best.price)} CHF</span></div>
+      <div class="kpi"><b>${fmt(opVal(best))}</b><span>${crit.t()} · ${OP.crit === 'roi' ? '' : (opVal(best) - bref.v >= 0 ? '+' : '') + fCHF(opVal(best) - bref.v) + ' CHF vs ' + bref.n}</span></div>
+    </div>
+    <p class="cap">Recettes 1re année ${fCHF(best.y1)} CHF · RU + RUE ${fCHF(best.sub)} CHF · payée après ${best.pay != null ? fN(best.pay,1) + ' ans' : '–'} · autoconsommation de la partie RU ${fN(best.taux*100,1)} %${best.T ? ` · seuils de pointe ${fN(best.T)} / ${fN(best.Ts)} kW` : ''}.
+    ${G.rueOn ? `RUE comptée à ${fN(G.rueRate)} CHF/kWc dès 150 kWc (enchère Pronovo, non garantie) : décochez la RUE dans Paramètres pour voir l'optimum sans elle.` : 'RUE désactivée : l\'injection totale ne reçoit que la RU ordinaire.'}
+    Grille : pas de ${fN(OP.step)} kWc et ${fN(OP.bstep)} kWh — affinez avec le configurateur (bouton ci-contre).</p>`;
+  const top = cells.slice().sort((a,b) => opVal(b) - opVal(a)).slice(0, 10);
+  document.getElementById('opTop').innerHTML = `<thead><tr><th>#</th><th>RU (kWc)</th><th>RUE (kWc)</th><th>Total</th><th>Batterie</th><th>Prix</th><th>RU + RUE</th><th>Recettes 1re année</th><th>Payée après</th><th>${crit.t()}</th></tr></thead><tbody>` +
+    top.map((c,k) => `<tr class="${k===0?'hl':''}"><td>${k+1}</td><td>${fN(c.ru)}</td><td>${fN(c.rue)}</td><td>${fN(c.ru+c.rue)}</td><td>${c.bat ? fN(c.bat)+' kWh' : '–'}</td><td>${fCHF(c.price)}</td><td>${fCHF(c.sub)}</td><td>${fCHF(c.y1)}</td><td>${c.pay != null ? fN(c.pay,1)+' ans' : '–'}</td><td>${fmt(opVal(c))}</td></tr>`).join('') + '</tbody>';
+  document.getElementById('opApply').onclick = () => {
+    Object.assign(CF, {kwc: tot, ac: Math.round(best.ru/tot*100), bat: best.bat, kwOv: null, base: 1, fix: null});
+    document.querySelector('.tab[data-tab=bat]').click();
+    setTimeout(() => { renderCF(); document.querySelector('.sech').scrollIntoView({behavior:'smooth'}); }, 200);
+  };
+}
+['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el) el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) OP[k] = x; renderOP(); }; });
+[['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) CF[k] = x; renderOP(); }; });
+document.getElementById('op_perKwh').onchange = e => { const x = parseFloat(e.target.value); if (isFinite(x) && x > 0) BS.perKwh = x; renderOP(); };
+document.getElementById('op_ps').onchange = e => { OP.ps = e.target.checked; renderOP(); };
+document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; renderOP(); });
+document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP.mode3 = b.dataset.m; renderOP(); });
+document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
+document.getElementById('opGo').onclick = () => { opData = null; renderOP(true); };
 
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {

@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261119y">
+<link rel="stylesheet" href="style.css?v=20261120b">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261119y"></script>
-<script src="costs.js?v=20261119y"></script>
+<script src="data.js?v=20261120b"></script>
+<script src="costs.js?v=20261120b"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -27,6 +27,7 @@
   <button class="tab" data-tab="flux">Flux financiers</button>
   <button class="tab" data-tab="ps">Peak shaving</button>
   <button class="tab" data-tab="bat">Taille de batterie</button>
+  <button class="tab" data-tab="opt">Version optimale</button>
   <button class="tab" data-tab="detail">Détail 15 min</button>
   <button class="tab" data-tab="param">Paramètres</button>
   <button class="tab" data-tab="act">Résumé court investissement</button>
@@ -129,6 +130,38 @@
   </div>
 </section>
 
+<!-- VERSION OPTIMALE -->
+<section id="tab-opt" class="panel">
+  <div class="row">
+    <div class="seg" id="opCrit"><button data-c="cum" class="on">Liquidités</button><button data-c="npv">Gain net actualisé</button></div>
+    <label class="sw" style="margin-bottom:12px"><input type="checkbox" id="op_ps"><span class="k"></span>Peak shaving</label>
+    <button class="btn sm" id="opGo">Recalculer</button>
+    <button class="btn sm" id="opApply" title="Ouvre cette configuration dans le configurateur de l'onglet Taille de batterie pour l'affiner avec les curseurs">Ouvrir dans le configurateur</button>
+  </div>
+  <div class="row" style="gap:12px">
+    <label class="inl">Toiture max. <input type="number" id="op_roof" step="50" style="width:70px"> kWc <i class="tip" data-tip="Puissance maximale posable : 4'200,8 kWc d'après le photomontage (8'573 modules). La somme RU + RUE ne peut pas dépasser cette valeur.">i</i></label>
+    <label class="inl">Pas <input type="number" id="op_step" step="50" style="width:60px"> kWc</label>
+    <label class="inl">Batterie jusqu'à <input type="number" id="op_bmax" step="250" style="width:70px"> kWh, pas <input type="number" id="op_bstep" step="50" style="width:60px"></label>
+    <label class="inl">RU <input type="number" id="op_yAc" style="width:62px"> kWh/kWc <i class="tip" data-tip="Production par kWc de la partie autoconsommation (1'090 = V2, 901 = toits RU de V1).">i</i></label>
+    <label class="inl">RUE <input type="number" id="op_yRue" style="width:62px"> kWh/kWc</label>
+    <label class="inl">PV <input type="number" id="op_pKwc" style="width:62px"> CHF/kWc</label>
+    <label class="inl">Batterie <input type="number" id="op_perKwh" style="width:56px"> CHF/kWh</label>
+  </div>
+  <div class="opprog"><div id="opBar"></div></div><p class="cap" id="opStatus" style="margin:4px 0 10px"></p>
+  <div class="box"><h3>Version optimale <i class="tip" data-tip="Meilleure combinaison trouvée sur la grille selon le critère choisi. Mêmes hypothèses que le reste du simulateur (tarifs, subventions, scénario de peak shaving, durée).">i</i></h3><div id="opBest"></div></div>
+  <div class="grid2">
+    <div class="box"><h3>Carte 2D : RU × RUE <i class="tip" data-tip="Chaque case est une combinaison puissance RU / puissance RUE. Couleur : valeur du critère, avec la meilleure batterie pour cette case (ou la batterie choisie). Ligne rouge : toiture pleine. Points : V1, V2, V3. Étoile : optimum.">i</i></h3>
+      <label class="inl">Batterie affichée <select id="opView"></select></label><div id="opMap"></div></div>
+    <div class="box"><h3>Vue 3D <i class="tip" data-tip="Surface : hauteur = valeur du critère selon RU et RUE. Nuage : chaque point est une combinaison RU / RUE / batterie ; gros points foncés = meilleures. Faites tourner avec la souris.">i</i></h3>
+      <div class="seg" id="opMode3"><button data-m="surface" class="on">Surface</button><button data-m="cloud">Nuage RU × RUE × batterie</button></div><div id="op3d"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><h3>Autour de l'optimum : taille de batterie</h3><div id="opBat"></div><p class="cap">Même répartition RU / RUE, batterie variable.</p></div>
+    <div class="box"><h3>Autour de l'optimum : répartition RU / RUE</h3><div id="opSplit"></div><p class="cap">Même puissance totale et même batterie, part RU variable.</p></div>
+  </div>
+  <div class="box"><h3>Les 10 meilleures configurations</h3><div class="tablewrap"><table id="opTop"></table></div></div>
+</section>
+
 <!-- DETAIL -->
 <section id="tab-detail" class="panel">
   <div class="row">
@@ -192,6 +225,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261119y"></script>
+<script src="app.js?v=20261120b"></script>
 </body>
 </html>
