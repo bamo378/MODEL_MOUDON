@@ -2331,8 +2331,6 @@ function pageFluxOld(i){
     <tr class="cf"><td></td><td></td><td></td><td class="c"><span class="gb2">${(r.net > 0 ? y1.total/r.net*100 : 0).toFixed(2)}%</span></td></tr>
     ${sp}
     <tr class="pk"><td>Prix de revient moyen du kWh sur 20, 25 et 30 ans<br><small>(remboursement de l'emprunt compris)</small></td><td colspan="3" class="c"><b>${prk(20).toFixed(2)} cts/kWh || ${prk(25).toFixed(2)} cts/kWh || ${prk(30).toFixed(2)} cts/kWh</b></td></tr>
-    ${sp}
-    <tr class="ft"><td colspan="4">Collaborateur Soleol HBA</td></tr>
    </table></div>`;
 }
 function pageGraph(i){
@@ -2418,8 +2416,18 @@ function renderXl(){
   drawXlCharts(xlIdx);
   bindXe(pv); bindXe(pf);
 }
-function reportAct(only){
+function reportAct(only, compact){
   if (typeof only !== 'number') only = null;
+  if (compact){
+    // Old Soleol : uniquement le Tableau client et le photomontage de chaque variante
+    let h = '';
+    RES.forEach((r, i) => { if (only !== null && i !== only) return;
+      h += pageFlux(i) + `<div class="pmpage"><h2>Annexe · photomontage ${r.v.name}</h2><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note">${PM_TXT[i]}</p></div>`; });
+    const el = document.getElementById('report'); el.classList.add('compact'); el.innerHTML = h.replace(/<input class="xe"[^>]*value="([^"]*)"[^>]*>/g, '$1');
+    const imgs = [...el.querySelectorAll('img')];
+    Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => { window.print(); setTimeout(() => el.classList.remove('compact'), 1000); }, 100));
+    return;
+  }
   const today = new Date().toLocaleDateString('fr-CH');
   let h = `<div class="rhead"><img src="logo-model.png" alt="Model"><div><h1>Installation photovoltaïque, Moudon</h1><div class="meta">Dossier actionnaire${only!==null?' · '+RES[only].v.name:''} · ${today} · document interne</div><div class="meta">Pilotage de la batterie : ${PILOT[pilot()].t} – ${PILOT[pilot()].d} Scénario : ${scen().t} – ${scen().d}</div></div><img class="rsolimg" src="logo-soleol.png" alt="Soleol"></div>
    <div class="box"><b>Périodes étudiées</b><br>Consommation : courbe de charge au quart d'heure du <b>01.10.2025 au 30.09.2026</b>. Réglage du pilotage de la batterie : 01.01.2025 au 30.09.2025. Production : simulations PVsyst des variantes. Coûts : fichier de prix du 18.11.2026.</div>
@@ -2460,9 +2468,9 @@ function renderScen(){ const el = document.getElementById('psScen'); if (!el) re
   el.querySelectorAll('button').forEach(b => b.onclick = () => { G.psScen = b.dataset.s; save(); renderScen(); renderParams(); schedule(); }); }
 renderScen();
 document.getElementById('repAct').onclick = reportAct;
-document.getElementById('fipPdf').onclick = () => reportAct(xlIdx);
+document.getElementById('fipPdf').onclick = () => reportAct(xlIdx, FIPL === 'old');
 document.getElementById('vertPdf').onclick = () => reportAct(xlIdx);
-document.getElementById('fipPdfAll').onclick = () => reportAct();
+document.getElementById('fipPdfAll').onclick = () => reportAct(null, FIPL === 'old');
 document.getElementById('vertPdfAll').onclick = () => reportAct();
 document.getElementById('vertReset').onclick = () => { CO[xlIdx] = {}; saveCO(); schedule(); };
 document.getElementById('fipReset').onclick = () => {

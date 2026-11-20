@@ -262,3 +262,6 @@ body.fsopen{overflow:hidden}
 :is(#report,body) .xog .gb,:is(#report,body) .xog .gn,:is(#report,body) .xog .gb2{background:#c6efce}
 :is(#report,body) .xog tr.blk2 td.b,:is(#report,body) .xog tr.blk2 td.cc,:is(#report,body) .xog tr.blk1 td.b{background:#000}
 @media print{#report .xlpage, #report .xlpage *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* PDF Old Soleol : page sans marge du navigateur (pas d'en-tête ni de pied de page imprimés) */
+@page oldsol{size:A4;margin:0}
+@media print{#report.compact .xlpage,#report.compact .pmpage{page:oldsol;padding:14mm 13mm 10mm !important;box-sizing:border-box}}
