@@ -852,7 +852,7 @@ const OP_OPTS = [['bat','Batterie','Tester des batteries sur la partie RU. Désa
   ['grid','Recharge réseau','La batterie peut se recharger sur le réseau jusqu\'à sa réserve (désactivé par défaut).'],
   ['wk','Réserve libérée le week-end','Du vendredi 22h au dimanche 20h, la batterie se vide pour l\'usine.']];
 let opRun = 0, opData = null, opDrawn = null, opCamRev = 1;
-const opSig = () => [opData && opData.key, OP.crit, OP.view, OP.mode3, opCamRev].join('§');
+const opSig = () => [opData && opData.key, OP.crit, OP.view, OP.mode3, opCamRev, RES.map(r => Math.round(r.rows[r.rows.length-1].cum)).join(',')].join('§');
 function loadPlotly(cb){
   if (window.Plotly) return cb();
   const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js';
@@ -866,7 +866,7 @@ function opVariant(ru, rue, bat){
 }
 const OP_CRIT = {cum: {t: () => `Liquidités à ${Math.round(G.horizon)} ans`, u:'CHF'}, npv: {t: () => 'Gain net actualisé', u:'CHF'}, roi: {t: () => `Liquidités à ${Math.round(G.horizon)} ans par franc investi (net)`, u:'CHF/CHF'}};
 function opVal(c){ return OP.crit === 'npv' ? c.npv : OP.crit === 'roi' ? c.roi : c.cum; }
-function opKey(){ return JSON.stringify([G, BS, CF.yAc, CF.yRue, CF.pKwc, OP.roof, OP.step, OP.bmax, OP.bstep, OP.ps, OP.bat, OP.rue, OP.allowRue, OP.grid, OP.wk, V[1].acPrice, V[1].batReduc, V[1].batKwh]); }
+function opKey(){ const {crit, view, mode3, ...o} = OP; return JSON.stringify([G, BS, CF.yAc, CF.yRue, CF.pKwc, o, V]); } // tout paramètre qui change le calcul
 function renderOP(force){
   ['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el && document.activeElement !== el) el.value = OP[k]; });
   [['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = CF[k]; });
@@ -983,9 +983,11 @@ function drawOP(){
     setTimeout(() => { renderCF(); document.querySelector('.sech').scrollIntoView({behavior:'smooth'}); }, 200);
   };
 }
-['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el) el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) OP[k] = x; renderOP(); }; });
-[['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0) CF[k] = x; renderOP(); }; });
-document.getElementById('op_perKwh').onchange = e => { const x = parseFloat(e.target.value); if (isFinite(x) && x > 0) BS.perKwh = x; renderOP(); };
+let opTyping = null;
+const opLater = fn => { clearTimeout(opTyping); opTyping = setTimeout(fn, 700); };
+['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el) el.oninput = el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0){ OP[k] = x; opLater(renderOP); } }; });
+[['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); el.oninput = el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0){ CF[k] = x; opLater(renderOP); } }; });
+document.getElementById('op_perKwh').oninput = document.getElementById('op_perKwh').onchange = e => { const x = parseFloat(e.target.value); if (isFinite(x) && x > 0){ BS.perKwh = x; opLater(renderOP); } };
 document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; renderOP(); });
 document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP.mode3 = b.dataset.m; renderOP(); });
 document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
