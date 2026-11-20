@@ -64,7 +64,7 @@ const GLOB_FIELDS = [
   ['sec','Batterie (technique)'],
   ['usable','Capacité utile (part de la capacité)',2,'Capacité réellement utilisable en moyenne sur la durée de vie (profondeur de décharge et vieillissement).'],
   ['eta','Rendement de charge et de décharge',3,'Rendement dans chaque sens ; aller-retour ≈ 88 %.'],
-  ['gridChg','Recharge de la batterie sur le réseau',-1,'Désactivé : la batterie se charge uniquement avec le surplus solaire de la partie autoconsommation, jamais sur le réseau. Activé : elle peut se recharger sur le réseau jusqu\'à sa réserve, quand l\'usine est bien sous le seuil de pointe.'],
+  ['gridChg','Recharge de la batterie sur le réseau (valeur par défaut)',-1,'Valeur par défaut des trois variantes ; chaque variante a aussi son bouton « Recharge réseau ». Désactivé : la batterie se charge uniquement avec le surplus solaire de la partie autoconsommation, jamais sur le réseau. Activé : elle peut se recharger sur le réseau jusqu\'à sa réserve, quand l\'usine est bien sous le seuil de pointe.'],
   ['auto','Réglage automatique du pilotage',-1,'Cherche le seuil de pointe et la réserve les plus rentables, réglés sur janv.–sept. 2025 puis appliqués à l\'année simulée.'],
 ];
 
@@ -97,6 +97,7 @@ const YEAR = series(D.start, D.n, D.load, D.pv, true);
 const CAL = series(D.calStart, D.calN, D.calLoad, D.calPv, false);
 
 /* ---------------- Simulation quart d'heure ---------------- */
+let GRIDC = false; // recharge de la batterie sur le réseau (bouton par variante)
 let WKF = false; // réserve libérée le week-end (option par variante, désactivée par défaut)
 function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
   const Rw = Array.isArray(R) ? R[0] : R, Rs = Array.isArray(R) ? R[1] : R; // réserve hiver (oct.–mars) / été (avr.–sept.)
@@ -117,7 +118,7 @@ function sim(S, prod, cap, pw, T0, R, eta, mode, keep){
       if (x < 0){ c = Math.min(-x, pw, (cap-soc)/(eta*DT)); kind = 1; }
       else if (x > T - SC.m){ f = 1 + SC.o; d = Math.min(x-(T-SC.m), pw, soc*eta/(f*DT)); kind = 3; }
       else if (soc > res){ d = Math.min(x, pw, (soc-res)*eta/DT); kind = 4; }
-      else if (G.gridChg && soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; kind = 2; }
+      else if (GRIDC && soc < res && x < T-100){ c = Math.min(T-50-x, pw, (res-soc)/(eta*DT)); gchg += c*DT; kind = 2; }
       soc += c*eta*DT - d*f/eta*DT;
     }
     if (keep){ cA[i] = c; dA[i] = d; kA[i] = kind; }
@@ -137,7 +138,7 @@ function annualCost(r, ac, Q){
 const Q_CAL = Q_KVARH.slice(3); // janv. → sept., même ordre que la période de réglage
 const tuneCache = new Map();
 function tune(prodPerKwh, cap, pw, ac){
-  const key = [prodPerKwh, cap, pw, ac, WKF, G.puiss, G.rev, G.prixQ, G.eta, !!G.gridChg, G.psScen].join('|');
+  const key = [prodPerKwh, cap, pw, ac, WKF, G.puiss, G.rev, G.prixQ, G.eta, GRIDC, G.psScen].join('|');
   if (tuneCache.has(key)) return tuneCache.get(key);
   const cost = (T, R) => annualCost(sim(CAL, prodPerKwh, cap, pw, T, R, G.eta, 0, false), ac, Q_CAL);
   // 1) seuil et réserve communs ; 2) réserve d'été séparée
@@ -170,6 +171,7 @@ function compute(v){
   let T = v.T, Ts = v.Ts ?? v.T, R = v.R, Rs = v.Rs ?? v.R;
   const mode = (hasBat && v.psOn) ? 0 : 1;
   WKF = v.wkFree === true;
+  GRIDC = (v.gridChg ?? G.gridChg) === true;
   if (hasBat && v.psOn && G.auto){ const t = tune(v.prodAc, cap, pw, v.acPrice); T = t.T; Ts = t.Ts ?? t.T; R = t.R; Rs = t.Rs; }
   const r = sim(YEAR, v.prodAc, cap, pw, [T, Ts], [R, Rs], G.eta, mode, true);
   const r0 = hasBat ? sim(YEAR, v.prodAc, 0, 0, 1e9, 1, G.eta, 1, false) : r;
@@ -246,7 +248,8 @@ function renderCards(){
      <div class="toggles">
        <label class="sw"><input type="checkbox" data-v="${i}" data-k="batOn" ${r.v.batOn?'checked':''}><span class="k"></span>Batterie</label>
        <label class="sw"><input type="checkbox" data-v="${i}" data-k="psOn" ${r.v.psOn?'checked':''} ${r.v.batOn?'':'disabled'}><span class="k"></span>Peak shaving</label>
-       <i class="tip" data-tip="Batterie : retire la batterie de la variante et baisse le prix de l'offre. Peak shaving : si désactivé, la batterie sert seulement à stocker le surplus solaire ; la pointe reste facturée.">i</i>
+       <label class="sw"><input type="checkbox" data-v="${i}" data-k="gridChg" ${(r.v.gridChg ?? G.gridChg)?'checked':''} ${r.v.batOn?'':'disabled'}><span class="k"></span>Recharge réseau</label>
+       <i class="tip" data-tip="Batterie : retire la batterie de la variante et baisse le prix de l'offre. Peak shaving : si désactivé, la batterie sert seulement à stocker le surplus solaire ; la pointe reste facturée. Recharge réseau : la batterie peut se recharger sur le réseau jusqu'à sa réserve, quand l'usine est bien sous le seuil de pointe (sinon uniquement avec le surplus solaire).">i</i>
      </div>
      <div class="kpis">
        <div class="kpi"><b>${fCHF(r.net)}</b><span>Investissement net (CHF)</span></div>
@@ -539,13 +542,13 @@ function explainPS(r){
       <tr><td>${alts[2][0]}</td><td>${fCHF(hi.sPeak)} CHF</td><td>${fCHF(tot(hi))} CHF</td></tr></table>
       ${bestAlt[1] !== r ? `<p class="note-warn">Sur l'année simulée (oct. 2025 – sept. 2026), des seuils de ${bestAlt[0]} auraient rapporté ${fCHF(tot(bestAlt[1]) - tot(r))} CHF de plus. ${G.auto ? `Le réglage automatique est fait sur janvier–septembre 2025, sans connaître les pointes de l'année simulée, comme le ferait le vrai pilotage : cet écart montre la marge d'incertitude du réglage.` : `Vous pouvez essayer cette valeur dans l'onglet Paramètres.`}</p>` : `<p>Sur l'année simulée, ${TT(T, Ts)} est bien le meilleur des trois réglages.</p>`}
       <p><b>Mois où le seuil tient :</b> ${held.length ? held.join(', ') : 'aucun'}.</p>
-      ${why.energie.length ? `<p><b>Batterie vide au moment de la pointe :</b> ${why.energie.join(' ; ')}. ${G.gridChg ? `La pointe a duré trop longtemps pour l'énergie disponible (${fN(cap)} kWh utiles), surtout en hiver quand le solaire ne recharge pas.` : `Sans recharge sur le réseau, la batterie (${fN(cap)} kWh utiles) ne se remplit qu'au soleil : tôt le matin, le soir ou après des jours gris, elle était vide ou trop basse au moment de la pointe.`}</p>` : ''}
+      ${why.energie.length ? `<p><b>Batterie vide au moment de la pointe :</b> ${why.energie.join(' ; ')}. ${(v.gridChg ?? G.gridChg) ? `La pointe a duré trop longtemps pour l'énergie disponible (${fN(cap)} kWh utiles), surtout en hiver quand le solaire ne recharge pas.` : `Sans recharge sur le réseau, la batterie (${fN(cap)} kWh utiles) ne se remplit qu'au soleil : tôt le matin, le soir ou après des jours gris, elle était vide ou trop basse au moment de la pointe.`}</p>` : ''}
       ${why.puissance.length ? `<p><b>Puissance de la batterie trop faible :</b> ${why.puissance.join(' ; ')}. L'usine a dépassé le seuil de plus de ${fN(v.batKw)} kW, la puissance maximale de décharge : la batterie ne peut couper que ${fN(v.batKw)} kW.</p>` : ''}
       ${why.weekend.length ? `<p><b>Pointe pendant le week-end :</b> ${why.weekend.join(' ; ')}. ${v.wkFree === true ? `Le week-end, la réserve est libérée pour l'usine ; la batterie n'avait plus assez d'énergie.` : `La batterie, vidée par une pointe précédente, ne s'était pas assez rechargée au soleil.`}</p>` : ''}
       ${held.length < 12 ? `<p class="cap">Même quand le seuil ne tient pas, la pointe de ces mois reste plus basse que sans batterie.</p>` : ''}
       <p><b>Pourquoi la batterie reste parfois à sa réserve sans servir l'usine ?</b> Parce qu'un kWh gardé pour une pointe vaut beaucoup plus qu'un kWh consommé :</p>
       <ul>
-        <li>Un kWh pris dans la batterie pour l'usine fait gagner ${fN(vSun*100,2)} ct s'il est rechargé avec du solaire (on évite ${fN(v.acPrice*100,2)} ct, mais on ne revend pas ${fN(G.rev*100,2)} ct et on perd ${fN((1-G.eta*G.eta)*100)} %), ${G.gridChg ? `et fait <b>perdre</b> ${fN(-vGrid*100,2)} ct s'il est rechargé sur le réseau (pertes seules)` : `; la batterie n'est jamais rechargée sur le réseau, donc chaque kWh donné à l'usine manque si une pointe arrive avant le prochain soleil`}.</li>
+        <li>Un kWh pris dans la batterie pour l'usine fait gagner ${fN(vSun*100,2)} ct s'il est rechargé avec du solaire (on évite ${fN(v.acPrice*100,2)} ct, mais on ne revend pas ${fN(G.rev*100,2)} ct et on perd ${fN((1-G.eta*G.eta)*100)} %), ${(v.gridChg ?? G.gridChg) ? `et fait <b>perdre</b> ${fN(-vGrid*100,2)} ct s'il est rechargé sur le réseau (pertes seules)` : `; la batterie n'est jamais rechargée sur le réseau, donc chaque kWh donné à l'usine manque si une pointe arrive avant le prochain soleil`}.</li>
         <li>Une pointe ratée coûte ${fN(P,2)} CHF par kW pour tout le mois : 100 kW de trop = ${fCHF(100*P)} CHF.</li>
         <li>Test sur l'année avec ${n} : si la batterie n'avait aucune réserve et servait d'abord l'usine, les recettes de la 1re année seraient de ${fCHF(tot(z))} CHF au lieu de ${fCHF(tot(r))} CHF, soit <b>${fCHF(tot(r)-tot(z))} CHF de moins par an</b>, parce que des pointes passeraient (gain de puissance ${fCHF(z.sPeak)} au lieu de ${fCHF(r.sPeak)} CHF).</li>
       </ul>
@@ -597,7 +600,7 @@ function renderPSCost(r){
       <li><b>Trop de soleil :</b> le surplus charge la batterie ; quand elle est pleine, le reste est revendu.</li>
       ${ps ? `<li><b>L'usine tire plus que le seuil (${fN(T)} kW en hiver, ${fN(Ts)} kW en été) :</b> la batterie se décharge (jusqu'à ${fN(v.batKw)} kW) pour que le réseau ne fournisse pas plus que le seuil. Si une pointe passe quand même, le seuil remonte jusqu'à la fin du mois, puisque la pointe facturée est déjà atteinte.</li>
       <li><b>Sous le seuil, batterie au-dessus de la réserve :</b> l'énergie en trop couvre la consommation de l'usine.</li>
-      ${G.gridChg ? `<li><b>Bien sous le seuil (moins de ${fN(T-100)} kW) et batterie sous la réserve :</b> recharge sur le réseau jusqu'à la réserve seulement, sans dépasser ${fN(T-50)} kW de soutirage.</li>` : `<li><b>Jamais de recharge sur le réseau :</b> la batterie ne se remplit qu'avec le surplus solaire. Quand le soleil ne suffit pas (hiver, mauvais temps), elle peut rester vide plusieurs jours et ne coupe alors plus les pointes.</li>`}
+      ${(v.gridChg ?? G.gridChg) ? `<li><b>Bien sous le seuil (moins de ${fN(T-100)} kW) et batterie sous la réserve :</b> recharge sur le réseau jusqu'à la réserve seulement, sans dépasser ${fN(T-50)} kW de soutirage.</li>` : `<li><b>Jamais de recharge sur le réseau :</b> la batterie ne se remplit qu'avec le surplus solaire. Quand le soleil ne suffit pas (hiver, mauvais temps), elle peut rester vide plusieurs jours et ne coupe alors plus les pointes.</li>`}
       ${v.wkFree === true ? `<li><b>Week-end (vendredi 22h – dimanche 20h) :</b> pas de réserve, la batterie couvre l'usine et se remplit au soleil.</li>` : `<li><b>Week-end :</b> la réserve est gardée aussi ; le surplus solaire du week-end remplit la batterie, qui est pleine pour les pointes du lundi matin.</li>`}` :
       `<li><b>Sans peak shaving :</b> la batterie couvre la consommation de l'usine dès qu'elle contient de l'énergie.</li>`}
     </ol>
@@ -859,7 +862,7 @@ function loadPlotly(cb){
 function opVariant(ru, rue, bat){
   const bc = bat > 0 ? bsFixed(V[1]) + BS.perKwh*bat : 0;
   return Object.assign({}, V[1], {name:'Optimum', acKwc: ru, rueKwc: rue, prodAc: ru*CF.yAc, prodRue: rue*CF.yRue,
-    price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: OP.wk});
+    price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: OP.wk, gridChg: OP.grid});
 }
 const OP_CRIT = {cum: {t: () => `Liquidités à ${Math.round(G.horizon)} ans`, u:'CHF'}, npv: {t: () => 'Gain net actualisé', u:'CHF'}, roi: {t: () => `Liquidités à ${Math.round(G.horizon)} ans par franc investi (net)`, u:'CHF/CHF'}};
 function opVal(c){ return OP.crit === 'npv' ? c.npv : OP.crit === 'roi' ? c.roi : c.cum; }
@@ -1293,7 +1296,8 @@ function togs(id, i, lines){
   const v = V[i], el = document.getElementById(id);
   el.innerHTML = (lines ? `<label class="sw" title="Ligne « réduction de la puissance de pointe » dans les recettes"><input type="checkbox" data-k="fipPuiss" ${v.fipPuiss!==false?'checked':''}><span class="k"></span>Ligne puissance de pointe</label>
      <label class="sw" title="Ligne « énergie réactive » dans les recettes (coût dû à la franchise réduite)"><input type="checkbox" data-k="fipQ" ${v.fipQ!==false?'checked':''}><span class="k"></span>Ligne énergie réactive</label>` : '') + `<label class="sw"><input type="checkbox" data-k="batOn" ${v.batOn?'checked':''}><span class="k"></span>Batterie</label>
-     <label class="sw"><input type="checkbox" data-k="psOn" ${v.psOn?'checked':''} ${v.batOn?'':'disabled'}><span class="k"></span>Peak shaving</label>`;
+     <label class="sw"><input type="checkbox" data-k="psOn" ${v.psOn?'checked':''} ${v.batOn?'':'disabled'}><span class="k"></span>Peak shaving</label>
+     <label class="sw" title="La batterie peut se recharger sur le réseau jusqu'à sa réserve (sinon uniquement avec le surplus solaire)"><input type="checkbox" data-k="gridChg" ${(v.gridChg ?? G.gridChg)?'checked':''} ${v.batOn?'':'disabled'}><span class="k"></span>Recharge réseau</label>`;
   el.querySelectorAll('input').forEach(inp => inp.onchange = e => { V[i][e.target.dataset.k] = e.target.checked; save(); schedule(); });
 }
 // Onglets « Fichier Vert » et « Flux Inv. propre » : mêmes feuilles que les fichiers Excel, cases modifiables
