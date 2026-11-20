@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120g">
+<link rel="stylesheet" href="style.css?v=20261120i">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120g"></script>
-<script src="costs.js?v=20261120g"></script>
+<script src="data.js?v=20261120i"></script>
+<script src="costs.js?v=20261120i"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -34,7 +34,8 @@
   <button class="tab" data-tab="vert">Fichier Vert</button>
   <button class="tab" data-tab="fip">Flux Inv. propre</button>
   <span class="status" id="status"></span>
-  <div class="scenbox"><span>Peak shaving <i class="tip" data-tip="Théorique : pilotage parfait. Réaliste : marge de 30 kW sous le seuil et 15 % d'énergie en plus dans le quart d'heure. Prudent : marge de 50 kW, 25 % d'énergie en plus et 70 % seulement du gain de pointe dû à la batterie. S'applique aux trois variantes, à tous les onglets et aux PDF.">i</i></span><div class="seg" id="psScen"></div></div>
+  <div class="scenbox"><span>Pilotage <i class="tip" data-tip="Ce que saura faire le système de pilotage de la batterie. Seuil fixe : un seul seuil toute l'année. Hiver / été : deux seuils. Par mois : un seuil par mois réglé à partir de l'année précédente. Référence : seuils par mois choisis en connaissant l'année simulée, impossible en vrai (plafond théorique).">i</i></span><div class="seg" id="psPilot"></div></div>
+  <div class="scenbox"><span>Précision <i class="tip" data-tip="Théorique : pilotage parfait. Réaliste : marge de 30 kW sous le seuil et 15 % d'énergie en plus dans le quart d'heure. Prudent : marge de 50 kW, 25 % d'énergie en plus et 70 % seulement du gain de pointe dû à la batterie. S'applique aux trois variantes, à tous les onglets et aux PDF.">i</i></span><div class="seg" id="psScen"></div></div>
   <div class="repbtns"><button class="btn sm" id="repClient" title="Rapport court pour le client : résultats, graphiques et explications simples">Rapport PDF client</button><button class="btn sm" id="repExpert" title="Rapport détaillé : hypothèses, gains par poste, peak shaving mois par mois et flux annuels">Rapport PDF expert</button></div>
 </nav>
 
@@ -225,6 +226,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120g"></script>
+<script src="app.js?v=20261120i"></script>
 </body>
 </html>
