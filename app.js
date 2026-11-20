@@ -1068,54 +1068,48 @@ document.getElementById('opCam').onclick = () => { opCamRev++; drawOP(); };
 document.getElementById('opGo').onclick = () => { opData = null; renderOP(true); };
 
 
-/* ---------------- Analyse 3D : tapis de l'année, carte de risque, pilotage ---------------- */
-const A3 = {v: 1, q: 'grid', top: false, rv: 'cum', pv: 1, pz: 'y1'};
-let a3RiskRun = 0, a3Risk = null, a3PilRun = 0, a3Pil = null;
+/* ---------------- Analyse 3D : tapis de l'année, site en 3D, flux d'énergie ---------------- */
+const A3 = {v: 1, q: 'grid', top: false, day: '2026-06-25', qh: 52, zone: null, play: false};
 const A3Q = {load:{t:'Consommation de l\'usine', u:'kW'}, pv:{t:'Production solaire (partie autoconsommation)', u:'kW'}, grid:{t:'Soutirage au réseau', u:'kW'},
   exp:{t:'Surplus revendu', u:'kW'}, cut:{t:'Pointe écrêtée par la batterie', u:'kW'}, soc:{t:'État de charge de la batterie', u:'kWh'}};
 const a3font = {family:'Helvetica Neue, Arial, sans-serif', size:12, color:'#1a1a19'};
 const a3scale = [[0,'#f4f1ea'],[0.35,'#8fb3d6'],[0.7,'#2a5c8a'],[1,'#132a40']];
 function a3Tabs(){
-  const mk = (id, items, cur, cb) => { const el = document.getElementById(id); el.innerHTML = items.map(([k,t]) => `<button data-k="${k}" class="${String(k)===String(cur)?'on':''}">${t}</button>`).join(''); el.querySelectorAll('button').forEach(b => b.onclick = () => cb(b.dataset.k)); };
+  const mk = (id, items, cur, cb) => { const el = document.getElementById(id); if (!el) return; el.innerHTML = items.map(([k,t]) => `<button data-k="${k}" class="${String(k)===String(cur)?'on':''}">${t}</button>`).join(''); el.querySelectorAll('button').forEach(b => b.onclick = () => cb(b.dataset.k)); };
   mk('a3Var', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.v, k => { A3.v = +k; renderA3(); });
   mk('a3Q', Object.entries(A3Q).map(([k,o])=>[k, o.t.split(' (')[0]]), A3.q, k => { A3.q = k; renderA3(); });
   mk('a3Top', [[0,'Relief 3D'],[1,'Vue de dessus']], A3.top?1:0, k => { A3.top = k === '1'; renderA3(); });
-  mk('a3Rv', [['cum',`Liquidités à ${Math.round(G.horizon)} ans`],['npv','Gain net actualisé']], A3.rv, k => { A3.rv = k; drawRisk(); });
-  mk('a3Pv', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.pv, k => { A3.pv = +k; renderA3(); });
-  mk('a3Pz', [['y1','Recettes 1re année'],['peak','Gain de pointe par an']], A3.pz, k => { A3.pz = k; drawPil(); });
+  mk('a3Var2', V.map((v,i)=>[i, v.name]), A3.v, k => { A3.v = +k; A3.zone = null; renderA3(); });
 }
 function renderA3(){
   if (!document.getElementById('tab-a3').classList.contains('active')) return;
   a3Tabs();
-  loadPlotly(() => { drawCarpet(); runRisk(); runPil(); });
+  const d = document.getElementById('a3Day'); if (document.activeElement !== d) d.value = A3.day;
+  const q = document.getElementById('a3Qh'); if (document.activeElement !== q) q.value = A3.qh;
+  loadPlotly(() => { drawCarpet(); drawSite(); });
+  drawFlow();
 }
 // 1) Tapis de l'année : jours × heures × puissance
 function drawCarpet(){
   const r = RES[A3.v], S = YEAR, a = r.r, v = r.v, q = A3.q, nd = Math.floor(S.n/96);
   const Z = Array.from({length:24}, () => new Array(nd).fill(0)), TH = Array.from({length:24}, () => new Array(nd).fill(null));
   const days = [], ticks = [], tickt = [], MO = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const val = i => q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : (a.kind[i] === 3 ? a.dis15[i] : 0);
   for (let d = 0; d < nd; d++){
     const dt = new Date(S.t0 + d*86400000); days.push(dt.toISOString().slice(0,10));
     if (dt.getUTCDate() === 1){ ticks.push(d); tickt.push(MO[dt.getUTCMonth()] + ' ' + String(dt.getUTCFullYear()).slice(2)); }
     for (let h = 0; h < 24; h++){
-      let s = 0, t = null;
-      for (let k = 0; k < 4; k++){
-        const i = d*96 + h*4 + k, x = S.load[i] - v.prodAc*S.pv[i];
-        s += q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : (a.kind[i] === 3 ? a.dis15[i] : 0);
-        if (q === 'grid' && r.hasBat && r.mode === 0 && isFinite(a.thr[i])) t = Math.max(t ?? 0, a.thr[i]);
-      }
-      Z[h][d] = q === 'grid' || q === 'cut' ? Math.max(...[0,1,2,3].map(k => { const i = d*96+h*4+k; return q === 'grid' ? Math.max(a.grid[i],0) : (a.kind[i] === 3 ? a.dis15[i] : 0); })) : s/4;
-      TH[h][d] = t;
+      let s = 0, mx = 0, t = null;
+      for (let k = 0; k < 4; k++){ const i = d*96 + h*4 + k, x = val(i); s += x; mx = Math.max(mx, x); if (q === 'grid' && r.hasBat && r.mode === 0 && isFinite(a.thr[i])) t = Math.max(t ?? 0, a.thr[i]); }
+      Z[h][d] = (q === 'grid' || q === 'cut') ? mx : s/4; TH[h][d] = t;
     }
   }
-  const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`;
-  const cd = hrs.map(() => days);
+  const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`, cd = hrs.map(() => days);
   const traces = A3.top
     ? [{type:'heatmap', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}]
     : [{type:'surface', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}, lighting:{ambient:0.8, diffuse:0.5, specular:0.05}}];
-  if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:days.map((_,d)=>d), y:hrs, z:TH, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip', name:'Seuil'});
-  const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt};
-  const ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
+  if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:days.map((_,d)=>d), y:hrs, z:TH, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip'});
+  const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt}, ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
   Plotly.react('a3Carpet', traces, A3.top
     ? {margin:{l:60,r:20,t:10,b:50}, height:430, font:a3font, xaxis:xa, yaxis:ya, uirevision:'carpet'}
     : {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, uirevision:'carpet', scene:{xaxis:xa, yaxis:ya, zaxis:{title:{text:o.u}}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
@@ -1128,96 +1122,149 @@ function drawCarpet(){
     soc:'Bleu foncé = batterie pleine, clair = vide. On voit les jours d\'hiver où elle se vide sur les pointes et met du temps à se recharger au soleil.'};
   document.getElementById('a3CarpetTxt').textContent = `${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
 }
-// 2) Carte de risque : prix de revente × montant RUE
-function runRisk(){
-  const key = JSON.stringify([G, V, OP.crit]);
-  if (a3Risk && a3Risk.key === key){ drawRisk(); return; }
-  const run = ++a3RiskRun, X = [], Y = [], st = document.getElementById('a3RiskSt');
-  for (let x = 4; x <= 10.001; x += 0.5) X.push(+x.toFixed(1));
-  for (let y = 0; y <= 620; y += 40) Y.push(y);
-  const cum = V.map(() => Y.map(() => new Array(X.length).fill(null))), npv = V.map(() => Y.map(() => new Array(X.length).fill(null)));
-  const jobs = []; X.forEach((x,i) => Y.forEach((y,j) => V.forEach((v,k) => jobs.push([i,j,k]))));
-  let n = 0;
-  const step = () => {
-    if (run !== a3RiskRun) return;
-    const t0 = performance.now(), keep = {rev:G.rev, rueOn:G.rueOn, rueRate:G.rueRate};
-    try {
-      while (n < jobs.length && performance.now() - t0 < 120){
-        const [i,j,k] = jobs[n++]; G.rev = X[i]/100; G.rueOn = true; G.rueRate = Y[j];
-        const r = compute(V[k]); cum[k][j][i] = r.rows[r.rows.length-1].cum; npv[k][j][i] = r.npv;
-      }
-    } finally { Object.assign(G, keep); }
-    st.textContent = n < jobs.length ? `Calcul ${Math.round(n/jobs.length*100)} %…` : `${jobs.length} cas calculés`;
-    if (n < jobs.length){ setTimeout(step, 0); return; }
-    a3Risk = {key, X, Y, cum, npv}; drawRisk();
-  };
-  st.textContent = 'Calcul…'; setTimeout(step, 30);
+// ---- instant choisi (jour + quart d'heure) ----
+function a3Index(){
+  const d = A3.day, S = YEAR;
+  let i0 = Math.round((Date.UTC(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10)) - S.t0)/900000);
+  i0 = Math.max(0, Math.min(S.n - 96, i0)); return i0 + Math.max(0, Math.min(95, A3.qh));
 }
-function drawRisk(){
-  if (!a3Risk || !window.Plotly) return;
-  const {X, Y} = a3Risk, Z = a3Risk[A3.rv], H = Math.round(G.horizon);
-  const hov = V.map((v,k) => Y.map((y,j) => X.map((x,i) => `${v.name.split(' · ')[0]}<br>Revente ${fN(x,1)} ct · RUE ${fN(y)} CHF/kWc<br><b>${fCHF(Z[k][j][i])} CHF</b>`)));
-  const cur = V.map((v,k) => { const r = RES[k]; return A3.rv === 'npv' ? r.npv : r.rows[r.rows.length-1].cum; });
-  Plotly.react('a3Risk', V.map((v,k) => ({type:'surface', x:X, y:Y, z:Z[k], name:v.name.split(' · ')[0], showscale:false, opacity:0.85,
-      colorscale:[[0,COLORS[k]],[1,COLORS[k]]], text:hov[k], hoverinfo:'text', showlegend:true}))
-    .concat([{type:'scatter3d', mode:'markers+text', x:V.map(()=>G.rev*100), y:V.map(()=>G.rueOn ? G.rueRate : 0), z:cur, text:V.map(v=>v.name.split(' · ')[0]+' aujourd\'hui'), textfont:{size:11},
-      marker:{size:5, color:'#000'}, hoverinfo:'text', showlegend:false}]),
-    {margin:{l:0,r:0,t:0,b:0}, height:520, font:a3font, uirevision:'risk', legend:{x:0, y:1},
-     scene:{xaxis:{title:{text:'Prix de revente (ct/kWh)'}}, yaxis:{title:{text:'RUE (CHF/kWc)'}}, zaxis:{title:{text:'CHF'}}, camera:{eye:{x:-1.5, y:-1.9, z:0.75}}, dragmode:'turntable'}},
+function a3Now(){
+  const r = RES[A3.v], S = YEAR, a = r.r, v = r.v, i = a3Index(), k = a.kind[i];
+  const L = S.load[i], P = v.prodAc*S.pv[i], Prue = v.prodRue*S.pv[i], y = a.grid[i], c = a.ch[i], d = a.dis15[i];
+  const shape = S.pv[i] / Math.max(...Array.from({length:96}, (_,q) => S.pv[i - (i % 96) + q] || 0), 1e-9);
+  return {r, i, L, P, Prue, direct: Math.min(L, P), sunBat: k === 1 ? c : 0, gridBat: k === 2 ? c : 0, batPeak: k === 3 ? d : 0, batAc: k === 4 ? d : 0,
+    exp: Math.max(-y, 0), imp: Math.max(y, 0), soc: a.soc[i], cap: r.cap, thr: r.hasBat && r.mode === 0 && isFinite(a.thr[i]) ? a.thr[i] : null, shape, pvMax: S.pv[i]};
+}
+function a3TimeTxt(){
+  const i = a3Index(), d = new Date(YEAR.t0 + i*900000);
+  return `${['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][d.getUTCDay()]} ${d.getUTCDate()}.${d.getUTCMonth()+1}.${d.getUTCFullYear()} à ${String(d.getUTCHours()).padStart(2,'0')}h${String(d.getUTCMinutes()).padStart(2,'0')}`;
+}
+// Position du soleil à Moudon (46,67° N, 6,80° E), heure locale suisse
+function sunPos(i){
+  const loc = YEAR.t0 + i*900000, dl = new Date(loc), y = dl.getUTCFullYear();
+  const lastSun = (m) => { const t = new Date(Date.UTC(y, m+1, 0)); return Date.UTC(y, m, t.getUTCDate() - t.getUTCDay(), 1); };
+  const utcGuess = loc - 3600000, dst = utcGuess >= lastSun(2) && utcGuess < lastSun(9);
+  const t = loc - (dst ? 2 : 1)*3600000, n = t/86400000 + 2440587.5 - 2451545, rad = Math.PI/180;
+  const g = (357.529 + 0.98560028*n)*rad, q = 280.459 + 0.98564736*n, Lm = (q + 1.915*Math.sin(g) + 0.020*Math.sin(2*g))*rad, e = (23.439 - 0.00000036*n)*rad;
+  const ra = Math.atan2(Math.cos(e)*Math.sin(Lm), Math.cos(Lm)), dec = Math.asin(Math.sin(e)*Math.sin(Lm));
+  const gmst = (18.697374558 + 24.06570982441908*n) % 24, H = ((gmst + 6.80/15)*15)*rad - ra, lat = 46.67*rad;
+  const el = Math.asin(Math.sin(lat)*Math.sin(dec) + Math.cos(lat)*Math.cos(dec)*Math.cos(H));
+  const az = Math.atan2(-Math.sin(H), Math.tan(dec)*Math.cos(lat) - Math.sin(lat)*Math.cos(H));
+  return {el: el/rad, az: ((az/rad) + 360) % 360};
+}
+// ---- 2) Le site en 3D (schéma tiré des photomontages du 03.11.2026) ----
+// Repère local en mètres : x vers le sud-est (azimut 125°), y vers le nord-est (azimut 35°). Volumes approximatifs.
+const SITE_B = [
+  {n:'Halle principale', r:[22,110,60,186], h:10}, {n:'Halle nord-ouest (sheds)', r:[0,22,45,190], h:9},
+  {n:'Bâtiment sud', r:[0,92,-26,45], h:8}, {n:'Annexe', r:[-24,0,10,30], h:5}];
+const SITE_Z = [
+  {id:'S1', mod:103, m2:210.3, ori:'Nord-Est', kwc:[50.6,50.6,50.6], role:['rue','ru','ru'], r:[90,110,176,186], h:10},
+  {id:'S2–S4', mod:207, m2:422.5, ori:'Sheds Est-Ouest', kwc:[101.43,101.43,101.43], role:['rue','ru','ru'], r:[30,74,178,186], h:10},
+  {id:'S5', mod:452, m2:922.6, ori:'Sheds Est-Ouest', kwc:[221.48,221.48,221.48], role:['rue','ru','ru'], r:[16,22,45,190], h:9},
+  {id:'S6', mod:1240, m2:2531.1, ori:'Sheds Est-Ouest', kwc:[607.6,607.6,607.6], role:['rue','ru','ru'], r:[0,16,45,190], h:9},
+  {id:'S7', mod:217, m2:442.9, ori:'Sud-Ouest', kwc:[106.3,106.3,106.3], role:['rue','ru','ru'], r:[-24,0,10,30], h:5},
+  {id:'S8–S9', mod:892, m2:1820.8, ori:'Nord-Ouest / Sud-Est', kwc:[437.1,437.1,437.1], role:['rue','ru','ru'], r:[0,46,5,45], h:8},
+  {id:'S10', mod:696, m2:1420.7, ori:'Sud-Ouest', kwc:[341,341,341], role:['rue','ru','ru'], r:[0,46,-26,5], h:8},
+  {id:'S11', mod:696, m2:1420.7, ori:'Nord-Est', kwc:[341,341,341], role:['rue','ru','ru'], r:[50,92,2,36], h:8},
+  {id:'S12–S35', mod:1110, m2:2265.7, ori:'Sud-Ouest', kwc:[543.9,543.9,705.6], role:['rue','ru','ru'], r:[83,110,88,175], h:10, note3:'V3 : 1\'440 modules, 2\'939 m², 705,6 kWc'},
+  {id:'S36–S43.1', mod:488, m2:996.1, ori:'Sud-Ouest', kwc:[239.1,239.1,0], role:['rue','ru','off'], r:[70,110,62,87], h:10},
+  {id:'S43.2–S76', mod:2052, m2:4188.5, ori:'Sud-Ouest', kwc:[1005.5,1005.5,0], role:['ru','ru','off'], r:[28,82,100,177], h:10},
+  {id:'S77–S83', mod:420, m2:857.3, ori:'Sud-Ouest', kwc:[205.8,205.8,0], role:['rue','ru','off'], r:[28,70,79,99], h:10}];
+const ROLE = {ru:{t:'Autoconsommation (RU)', c:'#2a78d6'}, rue:{t:'Injection totale (RUE)', c:'#1baf7a'}, off:{t:'Pas de panneaux dans cette variante', c:'#c9c7c0'}};
+function box(x0,x1,y0,y1,z0,z1){
+  return {x:[x0,x1,x1,x0,x0,x1,x1,x0], y:[y0,y0,y1,y1,y0,y0,y1,y1], z:[z0,z0,z0,z0,z1,z1,z1,z1],
+    i:[0,0,4,4,0,0,1,1,2,2,3,3], j:[1,2,5,6,1,5,2,6,3,7,0,4], k:[2,3,6,7,5,4,6,5,7,6,4,7]};
+}
+function mixC(a, b, t){ const p = h => [1,3,5].map(k => parseInt(h.slice(k,k+2),16)); const A = p(a), B = p(b); return '#' + A.map((x,k) => Math.round(x + (B[k]-x)*t).toString(16).padStart(2,'0')).join(''); }
+function drawSite(){
+  if (!window.Plotly) return;
+  const vi = A3.v, now = a3Now(), sun = sunPos(now.i), light = Math.max(0, Math.min(1, now.shape));
+  const tr = [];
+  const g = box(-70,180,-80,250,-0.3,0); tr.push(Object.assign({type:'mesh3d', color:'#e7ece2', opacity:1, hoverinfo:'skip', flatshading:true}, g));
+  SITE_B.forEach(b => tr.push(Object.assign({type:'mesh3d', color:'#d6d4cd', opacity:1, flatshading:true, hoverinfo:'text', text:new Array(8).fill(b.n), lighting:{ambient:0.6, diffuse:0.7}}, box(b.r[0], b.r[1], b.r[2], b.r[3], 0, b.h))));
+  const zoneIdx = [];
+  SITE_Z.forEach((z, k) => {
+    const role = z.role[vi], base = ROLE[role].c, col = role === 'off' ? base : mixC(mixC(base, '#0d1b2a', 0.55*(1 - light)), '#ffffff', 0.28*light);
+    const txt = `${z.id} · ${ROLE[role].t}<br>${role === 'off' ? 'retiré en V3' : `${fN(z.kwc[vi],1)} kWc · ${z.ori}`}`;
+    zoneIdx.push(tr.length);
+    tr.push(Object.assign({type:'mesh3d', color: A3.zone === k ? '#eda100' : col, opacity:1, flatshading:true, hoverinfo:'text', text:new Array(8).fill(txt), lighting:{ambient:0.75, diffuse:0.6, specular:0.3}}, box(z.r[0]+0.6, z.r[1]-0.6, z.r[2]+0.6, z.r[3]-0.6, z.h, z.h + (role === 'off' ? 0.15 : 0.7))));
+  });
+  // soleil (direction réelle) et nord
+  const toLocal = (az) => [Math.cos((az - 125)*Math.PI/180), Math.cos((az - 35)*Math.PI/180)];
+  const cx = 55, cy = 80, R = 150;
+  if (sun.el > 0){
+    const [dx, dy] = toLocal(sun.az), ce = Math.cos(sun.el*Math.PI/180), sz = Math.sin(sun.el*Math.PI/180);
+    const sx = cx + R*ce*dx, sy = cy + R*ce*dy, szz = R*sz;
+    tr.push({type:'scatter3d', mode:'lines', x:[sx, cx], y:[sy, cy], z:[szz, 10], line:{color:'#eda100', width:3, dash:'dash'}, hoverinfo:'skip'});
+    tr.push({type:'scatter3d', mode:'markers+text', x:[sx], y:[sy], z:[szz], text:['Soleil'], textposition:'top center', marker:{size:14, color:'#ffcf33', line:{color:'#e09a00', width:2}}, hoverinfo:'text', hovertext:[`Soleil : hauteur ${fN(sun.el,0)}°, azimut ${fN(sun.az,0)}°`]});
+  }
+  const [nx, ny] = toLocal(0);
+  tr.push({type:'scatter3d', mode:'lines+text', x:[-50, -50 + 30*nx], y:[215, 215 + 30*ny], z:[1, 1], text:['', 'N'], textposition:'top center', textfont:{size:16, color:'#b3261e'}, line:{color:'#b3261e', width:6}, hoverinfo:'skip'});
+  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:'site', paper_bgcolor:'#fff',
+    scene:{xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'}},
     {responsive:true, displaylogo:false, scrollZoom:false});
-  // carte 2D : quelle variante gagne
-  const W = Y.map((y,j) => X.map((x,i) => { let b = 0; for (let k = 1; k < V.length; k++) if (Z[k][j][i] > Z[b][j][i]) b = k; return b; }));
-  const D = Y.map((y,j) => X.map((x,i) => { const s = V.map((v,k)=>Z[k][j][i]).sort((a,b)=>b-a); return s[0]-s[1]; }));
-  const txt = Y.map((y,j) => X.map((x,i) => `Revente ${fN(x,1)} ct · RUE ${fN(y)} CHF/kWc<br><b>${V[W[j][i]].name.split(' · ')[0]}</b> devant de ${fCHF(D[j][i])} CHF`));
-  Plotly.react('a3Win', [
-    {type:'heatmap', x:X, y:Y, z:W, text:txt, hoverinfo:'text', zmin:-0.5, zmax:V.length-0.5, showscale:false, colorscale:[[0,COLORS[0]],[0.333,COLORS[0]],[0.334,COLORS[1]],[0.666,COLORS[1]],[0.667,COLORS[2]],[1,COLORS[2]]], xgap:1, ygap:1},
-    {type:'scatter', mode:'markers+text', x:[G.rev*100], y:[G.rueOn ? G.rueRate : 0], text:['Aujourd\'hui'], textposition:'top center', marker:{symbol:'star', size:16, color:'#fff', line:{color:'#000', width:1.5}}, hoverinfo:'skip'},
-    {type:'scatter', mode:'lines', x:[X[0], X[X.length-1]], y:[252,252], line:{color:'#000', dash:'dot', width:1}, hoverinfo:'skip'}],
-    {margin:{l:60,r:10,t:10,b:50}, height:360, font:a3font, showlegend:false, xaxis:{title:{text:'Prix de revente (ct/kWh)'}}, yaxis:{title:{text:'RUE (CHF/kWc)'}},
-     annotations:[{x:X[X.length-1], y:252, xanchor:'right', yanchor:'bottom', text:'≈ RU ordinaire (RUE refusée)', showarrow:false, font:{size:10}}]},
-    {responsive:true, displaylogo:false});
-  document.getElementById('a3RiskTxt').innerHTML = `Couleurs : <b style="color:${COLORS[0]}">V1</b>, <b style="color:${COLORS[1]}">V2</b>, <b style="color:${COLORS[2]}">V3</b>. Seule V1 a une installation RUE : sa surface monte avec le montant RUE, celles de V2 et V3 n'en dépendent pas. La ligne pointillée (≈ 252 CHF/kWc) correspond à la RU ordinaire si la RUE n'est pas obtenue à l'enchère. ${A3.rv==='cum' ? `Critère : liquidités à ${H} ans.` : 'Critère : gain net actualisé.'} Les autres paramètres sont ceux du site (pilotage, précision, réglages des variantes).`;
+  const el = document.getElementById('a3Site');
+  if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
+  el._zoneIdx = zoneIdx;
+  // panneau d'information
+  const r = now.r, v = r.v, tot = v.prodAc + v.prodRue;
+  let zi = '<p class="cap">Cliquez sur une zone de panneaux pour voir son détail.</p>';
+  if (A3.zone !== null){
+    const z = SITE_Z[A3.zone], role = z.role[vi], share = role === 'ru' ? z.kwc[vi]/Math.max(v.acKwc,1e-9) : role === 'rue' ? z.kwc[vi]/Math.max(v.rueKwc,1e-9) : 0;
+    const pz = role === 'ru' ? now.P*share : role === 'rue' ? now.Prue*share : 0;
+    zi = `<div class="zinfo" style="border-left:4px solid ${ROLE[role].c}"><b>${z.id}</b> · ${ROLE[role].t}<br>${role === 'off' ? 'Zone sans panneaux dans cette variante.' : `${fN(vi === 2 && z.note3 ? 1440 : z.mod)} modules · ${fN(vi === 2 && z.note3 ? 2939.3 : z.m2,1)} m² · <b>${fN(z.kwc[vi],1)} kWc</b> · ${z.ori}<br>Production à cet instant : <b>${fN(pz)} kW</b> (≈ ${fN(share*100,1)} % de la partie ${role === 'ru' ? 'autoconsommation' : 'injection totale'})`}</div>`;
+  }
+  document.getElementById('a3SiteInfo').innerHTML = `<div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
+      <div class="kpi"><b>${fN(now.P + now.Prue)} kW</b><span>Production totale${v.rueKwc > 0 ? ` (dont RUE ${fN(now.Prue)} kW)` : ''}</span></div>
+      <div class="kpi"><b>${fN(now.L)} kW</b><span>Consommation de l'usine</span></div>
+      <div class="kpi"><b>${sun.el > 0 ? fN(sun.el,0)+'°' : 'nuit'}</b><span>Hauteur du soleil${sun.el > 0 ? ` · azimut ${fN(sun.az,0)}°` : ''}</span></div>
+      <div class="kpi"><b>${fN(tot/1000,0)} MWh/an</b><span>${fN(v.acKwc + v.rueKwc,1)} kWc au total</span></div></div>${zi}`;
 }
-// 3) Pilotage : seuil d'hiver × seuil d'été
-function runPil(){
-  const r0 = RES[A3.pv], key = JSON.stringify([G, V[A3.pv]]), st = document.getElementById('a3PilSt');
-  if (a3Pil && a3Pil.key === key){ drawPil(); return; }
-  if (!r0.hasBat || r0.mode !== 0){ a3Pil = {key, none:true}; drawPil(); return; }
-  const run = ++a3PilRun, TW = [], TS = [];
-  for (let t = 600; t <= 960; t += 20) TW.push(t);
-  for (let t = 480; t <= 960; t += 20) TS.push(t);
-  const y1 = TS.map(() => new Array(TW.length).fill(null)), pk = TS.map(() => new Array(TW.length).fill(null));
-  let n = 0; const N = TW.length*TS.length;
-  const step = () => {
-    if (run !== a3PilRun) return;
-    const t0 = performance.now();
-    while (n < N && performance.now() - t0 < 120){
-      const i = n % TW.length, j = Math.floor(n / TW.length); n++;
-      const r = altRun(r0.v, TW[i], r0.R, r0.Rs, undefined, TS[j]); y1[j][i] = r.year1; pk[j][i] = r.sPeak;
-    }
-    st.textContent = n < N ? `Calcul ${Math.round(n/N*100)} %…` : `${N} réglages calculés`;
-    if (n < N){ setTimeout(step, 0); return; }
-    a3Pil = {key, TW, TS, y1, peak: pk}; drawPil();
-  };
-  st.textContent = 'Calcul…'; setTimeout(step, 30);
+// ---- 3) Flux d'énergie animé ----
+function drawFlow(){
+  const n = a3Now(), r = n.r, v = r.v, el = document.getElementById('a3Flow');
+  document.getElementById('a3Time').textContent = a3TimeTxt();
+  const W = 900, Hh = 450, N = {sun:[140,85], rue:[470,60], usine:[760,225], bat:[140,365], grid:[470,385]};
+  const gridUse = Math.max(n.imp - n.gridBat, 0), batOut = n.batPeak + n.batAc;
+  const links = [
+    ['sun','usine', n.direct, '#eda100', 'Solaire → usine'], ['sun','bat', n.sunBat, '#1baf7a', 'Solaire → batterie'], ['sun','grid', n.exp, '#eda100', 'Surplus revendu'],
+    ['rue','grid', n.Prue, '#1baf7a', 'Injection totale (RUE)'], ['grid','usine', gridUse, '#8c8b86', 'Réseau → usine'], ['grid','bat', n.gridBat, '#8c8b86', 'Réseau → batterie'],
+    ['bat','usine', batOut, n.batPeak > 0 ? '#c0392b' : '#2a78d6', n.batPeak > 0 ? 'Batterie → usine (coupe la pointe)' : 'Batterie → usine']];
+  const maxF = Math.max(800, ...links.map(l => l[2]));
+  const path = (a, b, bend) => { const [x1,y1] = N[a], [x2,y2] = N[b], mx = (x1+x2)/2, my = (y1+y2)/2 + bend; return `M${x1},${y1} Q${mx},${my} ${x2},${y2}`; };
+  const bends = {'sun-usine':-40, 'sun-bat':0, 'sun-grid':40, 'rue-grid':0, 'grid-usine':30, 'grid-bat':20, 'bat-usine':60};
+  let svg = `<svg viewBox="0 0 ${W} ${Hh}" class="flowsvg">`;
+  links.forEach(([a,b,f,c,t]) => {
+    if (a === 'rue' && v.rueKwc <= 0) return;
+    const on = f > 0.5, w = on ? 3 + 34*Math.sqrt(f/maxF) : 1.5, dur = on ? Math.max(0.35, 2.4 - 2*Math.sqrt(f/maxF)) : 0, d = path(a, b, bends[a+'-'+b]);
+    svg += `<path d="${d}" fill="none" stroke="${on ? c : '#e3e2dc'}" stroke-opacity="${on ? 0.28 : 1}" stroke-width="${w}" stroke-linecap="round"/>`;
+    if (on) svg += `<path d="${d}" fill="none" stroke="${c}" stroke-width="${Math.max(2, w*0.42)}" stroke-linecap="round" stroke-dasharray="2 ${Math.max(10, w)}" class="flowdash" style="animation-duration:${dur}s"><title>${t} : ${fN(f)} kW</title></path>`;
+    if (on){ const [x1,y1] = N[a], [x2,y2] = N[b], mx = (x1+x2)/2, my = (y1+y2)/2 + bends[a+'-'+b]/2; svg += `<text x="${mx}" y="${my - 8}" class="flowlbl">${fN(f)} kW</text>`; }
+  });
+  const node = (k, title, sub, col, extra='') => { const [x,y] = N[k]; return `<g><circle cx="${x}" cy="${y}" r="50" fill="#fff" stroke="${col}" stroke-width="3"/>${extra}<text x="${x}" y="${y-4}" class="flownode">${title}</text><text x="${x}" y="${y+14}" class="flowsub">${sub}</text></g>`; };
+  const socPct = n.cap ? n.soc/n.cap : 0;
+  svg += node('sun', 'Solaire', `${fN(n.P)} kW`, '#eda100');
+  if (v.rueKwc > 0) svg += node('rue', 'RUE', `${fN(n.Prue)} kW`, '#1baf7a');
+  svg += node('usine', 'Usine', `${fN(n.L)} kW`, '#1a1a19');
+  svg += r.hasBat ? node('bat', 'Batterie', `${fN(socPct*100)} %`, '#2a78d6', `<rect x="${N.bat[0]-30}" y="${N.bat[1]+24}" width="60" height="7" rx="3" fill="#e3e2dc"/><rect x="${N.bat[0]-30}" y="${N.bat[1]+24}" width="${60*socPct}" height="7" rx="3" fill="#2a78d6"/>`) : node('bat', 'Batterie', 'aucune', '#c9c7c0');
+  svg += node('grid', 'Réseau', n.imp > 0.5 ? `achat ${fN(n.imp)} kW` : `vente ${fN(n.exp + n.Prue)} kW`, '#8c8b86');
+  svg += '</svg>';
+  el.innerHTML = svg;
+  const peakTxt = n.thr ? (n.batPeak > 0 ? `<b style="color:#c0392b">La batterie coupe une pointe</b> : sans elle, l'usine tirerait ${fN(n.imp + n.batPeak)} kW ; le réseau ne fournit que ${fN(n.imp)} kW (seuil du mois ${fN(n.thr)} kW).` : `Soutirage ${fN(n.imp)} kW, seuil de pointe du mois ${fN(n.thr)} kW${n.imp > n.thr ? ' : la pointe passe (batterie vide ou trop faible).' : ' : pas de pointe à couper.'}`) : (r.hasBat ? 'Peak shaving désactivé.' : 'Pas de batterie dans cette variante.');
+  document.getElementById('a3FlowTxt').innerHTML = `${v.name} · ${a3TimeTxt()}. ${peakTxt}`;
 }
-function drawPil(){
-  if (!a3Pil || !window.Plotly) return;
-  const r0 = RES[A3.pv], el = document.getElementById('a3PilTxt');
-  if (a3Pil.none){ Plotly.purge('a3Pil'); el.textContent = `${r0.v.name} : pas de batterie ou peak shaving désactivé, rien à régler.`; return; }
-  const {TW, TS} = a3Pil, Z = a3Pil[A3.pz];
-  let bi = 0, bj = 0; TS.forEach((_,j) => TW.forEach((_,i) => { if (Z[j][i] > Z[bj][bi]){ bj = j; bi = i; } }));
-  const cz = A3.pz === 'peak' ? r0.sPeak : r0.year1, flat = TS.reduce((a,_,j) => a + TW.filter((_,i) => Z[j][i] >= Z[bj][bi] - 1000).length, 0);
-  Plotly.react('a3Pil', [
-    {type:'surface', x:TW, y:TS, z:Z, colorscale:a3scale, colorbar:{title:{text:'CHF/an'}, thickness:12}, hovertemplate:'Hiver %{x} kW · été %{y} kW<br><b>%{z:,.0f} CHF</b><extra></extra>', contours:{z:{show:true, usecolormap:true, highlightcolor:'#000', project:{z:true}}}},
-    {type:'scatter3d', mode:'markers+text', x:[r0.T], y:[r0.Ts], z:[cz], text:[TW[bi] === r0.T && TS[bj] === r0.Ts ? 'Réglage choisi = meilleur' : 'Réglage choisi'], marker:{size:7, color:'#eda100', symbol:'diamond', line:{color:'#000', width:1}}, hoverinfo:'text', hovertext:[`Réglage choisi : ${seuilTxt(r0)}`]},
-    {type:'scatter3d', mode:'markers+text', x:[TW[bi]], y:[TS[bj]], z:[Z[bj][bi]], text:[TW[bi] === r0.T && TS[bj] === r0.Ts ? '' : 'Meilleur après coup'], marker:{size:6, color:'#b3261e'}, hoverinfo:'text', hovertext:[`Meilleur sur l'année simulée : ${TW[bi]} / ${TS[bj]} kW`]}],
-    {margin:{l:0,r:0,t:0,b:0}, height:520, font:a3font, showlegend:false, uirevision:'pil',
-     scene:{xaxis:{title:{text:'Seuil d\'hiver (kW)'}}, yaxis:{title:{text:'Seuil d\'été (kW)'}}, zaxis:{title:{text:'CHF/an'}}, camera:{eye:{x:1.6, y:-1.6, z:0.9}}, dragmode:'turntable'}},
-    {responsive:true, displaylogo:false, scrollZoom:false});
-  const gap = Z[bj][bi] - cz;
-  el.innerHTML = `${r0.v.name} : réglage choisi ${seuilTxt(r0)}${r0.Tcal ? ' (par mois : point placé sur ses seuils d\'hiver / été de départ)' : ''}, meilleur après coup ${TW[bi]} / ${TS[bj]} kW, écart <b>${fCHF(gap)} CHF/an</b>. ${flat} réglages sur ${TW.length*TS.length} sont à moins de 1'000 CHF/an du meilleur : ${flat > 40 ? 'le sommet est un <b>plateau large</b>, le réglage est robuste (une petite erreur de seuil coûte peu).' : flat > 12 ? 'le sommet est <b>assez large</b>, le réglage est raisonnablement robuste.' : 'le sommet est <b>étroit</b> : le seuil doit être réglé avec soin et vérifié sur les factures.'} Réserves fixées à celles du réglage choisi.`;
-}
+let a3Timer = null;
+function a3Step(dq){ A3.qh += dq; if (A3.qh > 95){ A3.qh = 0; a3Day(1); } if (A3.qh < 0){ A3.qh = 95; a3Day(-1); } document.getElementById('a3Qh').value = A3.qh; drawFlow(); if (window.Plotly) drawSite(); }
+function a3Day(dd){ const d = new Date(A3.day + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + dd); const iso = d.toISOString().slice(0,10); if (iso >= '2025-10-01' && iso <= '2026-09-30') A3.day = iso; document.getElementById('a3Day').value = A3.day; }
+document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); if (window.Plotly) drawSite(); };
+document.getElementById('a3Qh').oninput = e => { A3.qh = +e.target.value; drawFlow(); if (window.Plotly) drawSite(); };
+document.getElementById('a3Play').onclick = () => {
+  A3.play = !A3.play; document.getElementById('a3Play').textContent = A3.play ? '❚❚ Pause' : '▶ Lecture';
+  clearInterval(a3Timer); if (A3.play) a3Timer = setInterval(() => { if (!document.getElementById('tab-a3').classList.contains('active')){ A3.play = false; clearInterval(a3Timer); document.getElementById('a3Play').textContent = '▶ Lecture'; return; } a3Step(1); }, +document.getElementById('a3Speed').value);
+};
+document.getElementById('a3Speed').onchange = () => { if (A3.play){ document.getElementById('a3Play').click(); document.getElementById('a3Play').click(); } };
+document.getElementById('a3Prev').onclick = () => a3Step(-4);
+document.getElementById('a3Next').onclick = () => a3Step(4);
 
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {

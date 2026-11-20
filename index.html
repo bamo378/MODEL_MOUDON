@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120m">
+<link rel="stylesheet" href="style.css?v=20261120o">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120m"></script>
-<script src="costs.js?v=20261120m"></script>
+<script src="data.js?v=20261120o"></script>
+<script src="costs.js?v=20261120o"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -169,13 +169,22 @@
   <div class="box"><h3>1 · L'année en relief <i class="tip" data-tip="Chaque point est une heure de l'année simulée (365 jours × 24 heures). Hauteur et couleur : la grandeur choisie. Cliquer-glisser pour tourner ; zoom avec les boutons du graphique.">i</i></h3>
     <div class="row" style="gap:10px"><div class="seg" id="a3Var"></div><div class="seg" id="a3Q"></div><div class="seg" id="a3Top"></div></div>
     <div id="a3Carpet"></div><p class="cap" id="a3CarpetTxt"></p></div>
-  <div class="box"><h3>2 · Carte de risque : prix de revente × RUE <i class="tip" data-tip="Liquidités (ou gain net actualisé) de chaque variante selon le prix de revente de 4 à 10 ct/kWh et le montant RUE obtenu à l'enchère de 0 à 620 CHF/kWc. Point noir : la situation actuelle.">i</i></h3>
-    <div class="row" style="gap:10px"><div class="seg" id="a3Rv"></div><span class="cap" id="a3RiskSt" style="margin:0 0 12px"></span></div>
-    <div class="grid2" style="grid-template-columns:3fr 2fr"><div id="a3Risk"></div><div><div id="a3Win"></div><p class="cap" style="margin-top:4px">Variante la plus rentable dans chaque situation. Étoile : aujourd'hui.</p></div></div>
-    <p class="cap" id="a3RiskTxt"></p></div>
-  <div class="box"><h3>3 · Le pilotage de la batterie <i class="tip" data-tip="Gain selon le seuil d'hiver (oct.–mars) et le seuil d'été (avr.–sept.), réserves fixées. Losange jaune : réglage choisi par le simulateur (sur janvier–septembre 2025). Point rouge : meilleur réglage sur l'année simulée (connu après coup).">i</i></h3>
-    <div class="row" style="gap:10px"><div class="seg" id="a3Pv"></div><div class="seg" id="a3Pz"></div><span class="cap" id="a3PilSt" style="margin:0 0 12px"></span></div>
-    <div id="a3Pil"></div><p class="cap" id="a3PilTxt"></p></div>
+  <div class="box a3ctl">
+    <div class="row" style="gap:10px;margin-bottom:0"><div class="seg" id="a3Var2"></div>
+      <label class="inl">Jour <input type="date" id="a3Day" min="2025-10-01" max="2026-09-30"></label>
+      <button class="btn sm" id="a3Prev" title="Une heure plus tôt">◀ 1 h</button><input type="range" id="a3Qh" min="0" max="95" step="1" style="width:260px;accent-color:#1c3d5a;margin-bottom:12px"><button class="btn sm" id="a3Next" title="Une heure plus tard">1 h ▶</button>
+      <button class="btn sm" id="a3Play">▶ Lecture</button>
+      <label class="inl">Vitesse <select id="a3Speed"><option value="600">lente</option><option value="300" selected>normale</option><option value="120">rapide</option></select></label>
+      <b id="a3Time" style="margin-bottom:12px"></b></div>
+    <p class="cap" style="margin:0">Le jour, l'heure et la variante choisis ici pilotent le site en 3D et le flux d'énergie ci-dessous.</p></div>
+  <div class="grid2" style="grid-template-columns:3fr 2fr">
+    <div class="box"><h3>2 · Le site en 3D <i class="tip" data-tip="Schéma tiré des photomontages Soleol du 03.11.2026 : zones, modules, m², kWc et orientations exacts ; volumes et hauteurs des bâtiments approximatifs (pas à l'échelle exacte). Bleu : autoconsommation (RU). Vert : injection totale (RUE). Gris : pas de panneaux dans la variante. Les panneaux s'éclairent avec la production ; le soleil suit sa vraie position à Moudon.">i</i></h3>
+      <div id="a3Site"></div><p class="cap">Schéma tiré des photomontages : zones et puissances exactes, volumes approximatifs. Cliquer-glisser pour tourner, cliquer sur une zone pour son détail.</p></div>
+    <div class="box"><h3>Ce qui se passe à cet instant</h3><div id="a3SiteInfo"></div>
+      <div class="legend3"><span><i style="background:#2a78d6"></i>Autoconsommation (RU)</span><span><i style="background:#1baf7a"></i>Injection totale (RUE)</span><span><i style="background:#c9c7c0"></i>Sans panneaux</span><span><i style="background:#eda100"></i>Zone choisie</span></div></div>
+  </div>
+  <div class="box"><h3>3 · Le flux d'énergie <i class="tip" data-tip="Épaisseur des flèches = puissance à ce quart d'heure. Les traits avancent plus vite quand le flux est fort. Rouge : la batterie coupe une pointe. Valeurs de la simulation au quart d'heure de la variante choisie.">i</i></h3>
+    <div id="a3Flow"></div><p class="cap" id="a3FlowTxt"></p></div>
 </section>
 
 <!-- DETAIL -->
@@ -241,6 +250,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120m"></script>
+<script src="app.js?v=20261120o"></script>
 </body>
 </html>
