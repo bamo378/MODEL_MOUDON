@@ -251,3 +251,14 @@ body.fsopen{overflow:hidden}
 :is(#report,body) .xog .xe,:is(#report,body) .xog input{font:inherit}
 
 @media print{:is(#report,body) .xog{font-size:8.6pt}:is(#report,body) .xog tr.cf td{font-size:11pt;height:15px}:is(#report,body) .xog tr.cfh td{font-size:12pt}:is(#report,body) .xog tr.pk td{font-size:9.5pt}:is(#report,body) .xog tr.ti td{font-size:12pt}}
+/* Old Soleol : couleurs imprimées et alignements comme l'Excel */
+:is(#report,body) .xog, :is(#report,body) .xog *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+:is(#report,body) .xog tr.bi td.cc{border:0}:is(#report,body) .xog tr.bi td.d{border:0}
+:is(#report,body) .xog tr.bi td.d:has(.gb){border:1px solid #000}
+:is(#report,body) .xog tr.bi td.b{border:1px solid #000}
+:is(#report,body) .xog tr.dp td.b,:is(#report,body) .xog tr.dp td.cc{text-align:right}
+:is(#report,body) .xog tr.dp td.cc:has(.gn){text-align:center}
+:is(#report,body) .xog tr.hd td{background:#dce6f1}:is(#report,body) .xog tr.cfh td{background:#dce6f1}
+:is(#report,body) .xog .gb,:is(#report,body) .xog .gn,:is(#report,body) .xog .gb2{background:#c6efce}
+:is(#report,body) .xog tr.blk2 td.b,:is(#report,body) .xog tr.blk2 td.cc,:is(#report,body) .xog tr.blk1 td.b{background:#000}
+@media print{#report .xlpage, #report .xlpage *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

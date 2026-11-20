@@ -2306,9 +2306,9 @@ function pageFluxOld(i){
     <tr class="tt"><td class="nb"></td><td colspan="2" class="rt sm2">Total sources de financement</td><td class="d bx">${so(r.price)}</td></tr>
     ${sp}
     <tr class="hd"><td>DEPENSES (1ère année)</td><td class="c">intérêts</td><td class="c">remboursement</td><td class="c">TOTAL</td></tr>
-    ${row('Subvention communale', 'SFr. 0.-', 'SFr. 0.-', 'SFr. 0.-', 'bx2')}
-    ${row('Fonds propres', '', 'SFr. 0.-', 'SFr. 0.-', 'bx2 blk1')}
-    ${row('hypothèque/Leasing', so(y1.interet), '<span class="gn">max. possible</span>', so(y1.interet), 'bx2')}
+    ${row('Subvention communale', 'SFr. 0.-', 'SFr. 0.-', 'SFr. 0.-', 'bx2 dp')}
+    ${row('Fonds propres', '', 'SFr. 0.-', 'SFr. 0.-', 'bx2 blk1 dp')}
+    ${row('hypothèque/Leasing', so(y1.interet), '<span class="gn">max. possible</span>', so(y1.interet), 'bx2 dp')}
     <tr class="sp2"><td colspan="4"></td></tr>
     ${row('assurances', xe(G.assur,'g','assur',{mul:100,d:1}) + '%', '', so(ass), 'bx2')}
     ${row('réserve annuelle pour maintenance', xe(G.maint,'g','maint',{mul:100,d:1}) + '%', '', so(mnt), 'bx2')}
