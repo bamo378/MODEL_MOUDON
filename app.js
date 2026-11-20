@@ -1073,6 +1073,8 @@ document.getElementById('opGo').onclick = () => { opData = null; renderOP(true);
 const A3 = {v: 1, q: 'grid', top: false, day: '2026-06-25', qh: 52, zone: null, play: false};
 const A3Q = {load:{t:'Consommation de l\'usine', u:'kW'}, pv:{t:'Production solaire (partie autoconsommation)', u:'kW'}, grid:{t:'Soutirage au réseau', u:'kW'},
   exp:{t:'Surplus revendu', u:'kW'}, cut:{t:'Pointe écrêtée par la batterie', u:'kW'}, soc:{t:'État de charge de la batterie', u:'kWh'}};
+const a3red = [[0,'#f7e7e4'],[0.3,'#ec9a8f'],[0.65,'#c0392b'],[1,'#6e130c']];
+const a3sc = q => A3Q[q] && A3Q[q].red ? a3red : a3scale;
 const a3font = {family:'Helvetica Neue, Arial, sans-serif', size:12, color:'#1a1a19'};
 const a3scale = [[0,'#f4f1ea'],[0.35,'#8fb3d6'],[0.7,'#2a5c8a'],[1,'#132a40']];
 function a3Tabs(){
@@ -1080,6 +1082,7 @@ function a3Tabs(){
   mk('a3Var', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.v, k => { A3.v = +k; renderA3(); });
   mk('a3Q', Object.entries(A3Q).map(([k,o])=>[k, o.t.split(' (')[0]]), A3.q, k => { A3.q = k; renderA3(); });
   mk('a3Top', [[0,'Relief 3D'],[1,'Vue de dessus']], A3.top?1:0, k => { A3.top = k === '1'; renderA3(); });
+  const cbm = document.getElementById('a3Miss'); if (cbm){ cbm.checked = A3.showMiss !== false; cbm.onchange = () => { A3.showMiss = cbm.checked; drawCarpet(); }; }
   mk('a3Roll', [[1,'Défilement : jours passés masqués'],[0,'Toute l\'année']], A3.roll !== false ? 1 : 0, k => { A3.roll = k === '1'; renderA3(); });
   mk('a3Var2', V.map((v,i)=>[i, v.name]), A3.v, k => { A3.v = +k; A3.zone = null; renderA3(); });
 }
@@ -1097,17 +1100,25 @@ function drawCarpet(){
   const ck = A3._cz && A3._cz.r === r && A3._cz.q === q ? A3._cz : null;
   const Z = ck ? ck.Z : Array.from({length:24}, () => new Array(nd).fill(0)), TH = ck ? ck.TH : Array.from({length:24}, () => new Array(nd).fill(null));
   const days = ck ? ck.days : [], ticks = ck ? ck.ticks : [], tickt = ck ? ck.tickt : [], MO = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-  const val = i => q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : (a.kind[i] === 3 ? a.dis15[i] : 0);
+  const val = i => q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : q === 'miss' ? missAt(i) : (a.kind[i] === 3 ? a.dis15[i] : 0);
+  const missAt = i => r.hasBat && r.mode === 0 && isFinite(a.thr[i]) ? Math.max(a.grid[i] - a.thr[i], 0) : 0;
+  const MS = !ck && r.hasBat && r.mode === 0 ? Array.from({length:24}, () => new Array(nd).fill(0)) : null;
   if (!ck) for (let d = 0; d < nd; d++){
     const dt = new Date(S.t0 + d*86400000); days.push(dt.toISOString().slice(0,10));
     if (dt.getUTCDate() === 1){ ticks.push(d); tickt.push(MO[dt.getUTCMonth()] + ' ' + String(dt.getUTCFullYear()).slice(2)); }
     for (let h = 0; h < 24; h++){
       let s = 0, mx = 0, t = null;
       for (let k = 0; k < 4; k++){ const i = d*96 + h*4 + k, x = val(i); s += x; mx = Math.max(mx, x); if (q === 'grid' && r.hasBat && r.mode === 0 && isFinite(a.thr[i])) t = Math.max(t ?? 0, a.thr[i]); }
-      Z[h][d] = (q === 'grid' || q === 'cut') ? mx : s/4; TH[h][d] = t;
+      Z[h][d] = (q === 'grid' || q === 'cut' || q === 'miss') ? mx : s/4; TH[h][d] = t;
+      if (MS){ let m = 0; for (let k = 0; k < 4; k++) m = Math.max(m, missAt(d*96 + h*4 + k)); MS[h][d] = m; }
     }
   }
-  if (!ck) A3._cz = {r, q, Z, TH, days, ticks, tickt, hasTH: q === 'grid' && r.hasBat && r.mode === 0};
+  if (!ck){
+    A3._cz = {r, q, Z, TH, days, ticks, tickt, hasTH: q === 'grid' && r.hasBat && r.mode === 0, MS};
+    // pointes manquées : jours où le soutirage dépasse le seuil malgré la batterie
+    const M = MS;
+    if (M){ const ev = []; for (let d = 0; d < nd; d++){ let m = 0, hh = 0; for (let h = 0; h < 24; h++) if (M[h][d] > m){ m = M[h][d]; hh = h; } if (m > 0.5) ev.push({d, h:hh, m}); } A3._cz.miss = ev.sort((x, y) => y.m - x.m); }
+  }
   const cz = A3._cz; if (cz.zmax === undefined){ let m = 0; Z.forEach(row => row.forEach(x => { if (x > m) m = x; })); if (cz.hasTH) TH.forEach(row => row.forEach(x => { if (x !== null && x > m) m = x; })); cz.zmax = m || 1; }
   const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), zmax = cz.zmax;
   const ds = Math.max(0, Math.min(nd - 1, Math.round((Date.parse(A3.day + 'T00:00:00Z') - S.t0)/86400000))), zs = hrs.map(h => Z[h][ds]);
@@ -1126,12 +1137,14 @@ function drawCarpet(){
     const shapes = [{type:'rect', x0:-0.5, x1:d0 - 0.5, y0:-0.5, y1:23.5, fillcolor:'#ffffff', opacity:roll && d0 > 0 ? 0.92 : 0, line:{width:0}},
       {type:'line', x0:ds, x1:ds, y0:-0.5, y1:23.5, line:{color:'#1b1a17', width:2}}];
     const ann = [{x:ds, y:23.5, yanchor:'bottom', text:dLbl, showarrow:false, font:{color:'#b26b00', size:12}}];
-    const ckey = ['top', A3.v, q, a3H('a3Carpet', 1), RES.length].join('|');
+    const ckey = ['top', A3.v, q, a3H('a3Carpet', 1), RES.length, A3.showMiss !== false].join('|');
     if (el._ckey === ckey && el._cr === r && el.data) Plotly.relayout(el, {shapes, annotations:ann});
     else {
       el._ckey = ckey; el._cr = r;
       const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt, range:[-0.5, nd - 0.5]}, ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
-      Plotly.react(el, [{type:'heatmap', x:xs, y:hrs, z:Z, customdata:cd, colorscale:a3scale, zmin:0, zmax, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}],
+      const hm = [{type:'heatmap', x:xs, y:hrs, z:Z, customdata:cd, colorscale:a3sc(q), zmin:0, zmax, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}];
+      if (A3.showMiss !== false && cz.MS) hm.push({type:'heatmap', x:xs, y:hrs, z:cz.MS.map(row => row.map(v => v > 0.5 ? v : null)), customdata:cd, colorscale:[[0,'#ec9a8f'],[0.5,'#c0392b'],[1,'#6e130c']], zmin:0, showscale:false, hovertemplate:'%{customdata}<br>%{y}h : <b>pointe manquée +%{z:,.0f} kW</b><extra></extra>'});
+      Plotly.react(el, hm,
         {margin:{l:60,r:20,t:24,b:50}, height:a3H('a3Carpet', 430), font:a3font, showlegend:false, xaxis:xa, yaxis:ya, uirevision:'carpet', shapes, annotations:ann},
         {responsive:true, displaylogo:false, scrollZoom:false});
       if (!el._pc){ el._pc = true; el.on('plotly_click', ev => { const pt = ev.points && ev.points[0]; if (pt && typeof pt.x === 'number') a3PickDay(Math.round(pt.x)); }); }
@@ -1145,7 +1158,15 @@ function drawCarpet(){
     cut:'Chaque pic montre un moment où la batterie coupe une pointe : surtout tôt le matin et le soir, et davantage en hiver.',
     soc:'Bleu foncé = batterie pleine, clair = vide. On voit les jours d\'hiver où elle se vide sur les pointes et met du temps à se recharger au soleil.'};
   const dayV = zs.reduce((s, b) => s + b, 0), dayM = Math.max(...zs);
-  document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette : jour suivant / précédent (Maj + molette : semaine)${roll ? ' ; les jours passés disparaissent et réapparaissent quand on recule' : ''}. ${A3.top ? 'Clic : choisir ce jour.' : 'Glisser : tourner · clic droit ou Maj + glisser : déplacer · Ctrl + molette ou boutons + / − : zoom · clic : choisir ce jour.'}</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+  let missHtml = '';
+  if (A3.showMiss !== false){
+    const ev = cz.miss || [];
+    if (!(r.hasBat && r.mode === 0)) missHtml = '<div class="misslist"><span class="cap">Pas de peak shaving dans cette variante : aucune pointe visée, donc rien de manqué.</span></div>';
+    else if (!ev.length) missHtml = '<div class="misslist"><b style="color:#1baf7a">Aucune pointe manquée sur l\'année</b> : la batterie a tenu le seuil visé chaque mois.</div>';
+    else missHtml = `<div class="misslist"><b style="color:#c0392b">${ev.length} jour${ev.length > 1 ? 's' : ''} avec pointe manquée</b> · les plus fortes (clic pour y aller) : ${ev.slice(0, 10).map(e => `<button data-d="${e.d}" class="${e.d === ds ? 'on' : ''}">${new Date(S.t0 + e.d*86400000).toLocaleDateString('fr-CH', {day:'numeric', month:'short', timeZone:'UTC'})} ${e.h}h · +${fN(e.m)} kW</button>`).join('')}</div>`;
+  }
+  document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' || q === 'miss' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette : jour suivant / précédent (Maj + molette : semaine)${roll ? ' ; les jours passés disparaissent et réapparaissent quand on recule' : ''}. ${A3.top ? 'Clic : choisir ce jour.' : 'Glisser : tourner · clic droit ou Maj + glisser : déplacer · Ctrl + molette ou boutons + / − : zoom · clic : choisir ce jour.'}</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut'||q==='miss' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}${A3.showMiss !== false && cz.MS ? ' <b style="color:#c0392b">En rouge : les heures où le soutirage a dépassé le seuil de pointe visé du mois malgré la batterie (pointe manquée).</b>' : ''}${missHtml}`;
+  document.querySelectorAll('#a3CarpetTxt .misslist button').forEach(b => b.onclick = () => a3PickDay(+b.dataset.d));
 }
 function a3PickDay(d){
   const nd = Math.floor(YEAR.n/96); d = Math.max(0, Math.min(nd - 1, d));
@@ -1175,7 +1196,7 @@ function loadThree(cb){
 }
 // ---- Rendu 3D léger (three.js) de l'année en relief : mise à jour instantanée du jour ----
 const C3 = {L:100, ax:2.4, ay:1, az:0.7};
-function c3col(t){ const sc = a3scale; t = Math.max(0, Math.min(1, t)); let k = 0; while (k < sc.length - 2 && t > sc[k+1][0]) k++;
+function c3col(t, sc){ sc = sc || a3scale; t = Math.max(0, Math.min(1, t)); let k = 0; while (k < sc.length - 2 && t > sc[k+1][0]) k++;
   const [t0, c0] = sc[k], [t1, c1] = sc[k+1], u = (t - t0)/((t1 - t0) || 1), p = h => [1,3,5].map(i => parseInt(h.slice(i, i+2), 16)/255), A = p(c0), B = p(c1);
   return A.map((x, i) => x + (B[i] - x)*u); }
 function carpet3Dispose(el){ const t = el._t3; if (!t) return; t.ro && t.ro.disconnect(); t.renderer.dispose(); t.wrap.remove(); el._t3 = null; }
@@ -1220,12 +1241,12 @@ function carpet3(el, P){
   t.P = P; t.sx = sx; t.sy = sy; t.sz = sz;
   const h = a3H('a3Carpet', 560); if (t.h !== h){ t.h = h; c3size(t); }
   // géométrie (seulement si la variante ou la grandeur change)
-  const key = [A3.v, A3.q, RES.length].join('|');
+  const key = [A3.v, A3.q, RES.length, A3.showMiss !== false].join('|');
   if (t.key !== key || t.cz !== P.cz){
     t.key = key; t.cz = P.cz;
-    [t.mesh, t.thm, t.grid].forEach(m => { if (m){ t.scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+    [t.mesh, t.thm, t.grid, t.msm].forEach(m => { if (m){ t.scene.remove(m); m.geometry.dispose(); m.material.dispose(); } }); t.msm = null;
     const Z = P.cz.Z, n = nd*24, pos = new Float32Array(n*3), col = new Float32Array(n*3), idx = new Uint32Array((nd - 1)*23*6);
-    for (let d = 0; d < nd; d++) for (let hh = 0; hh < 24; hh++){ const k = d*24 + hh, z = Z[hh][d]; pos.set([d*sx, hh*sy, z*sz], k*3); col.set(c3col(z/P.cz.zmax), k*3); }
+    for (let d = 0; d < nd; d++) for (let hh = 0; hh < 24; hh++){ const k = d*24 + hh, z = Z[hh][d]; pos.set([d*sx, hh*sy, z*sz], k*3); col.set(A3.showMiss !== false && P.cz.MS && P.cz.MS[hh][d] > 0.5 ? c3col(0.5 + 0.5*Math.min(1, P.cz.MS[hh][d]/150), a3red) : c3col(z/P.cz.zmax, a3sc(A3.q)), k*3); }
     let m = 0; for (let d = 0; d < nd - 1; d++) for (let hh = 0; hh < 23; hh++){ const a = d*24 + hh, b = a + 24; idx[m++] = a; idx[m++] = b; idx[m++] = b + 1; idx[m++] = a; idx[m++] = b + 1; idx[m++] = a + 1; }
     const g = new T3.BufferGeometry(); g.setAttribute('position', new T3.BufferAttribute(pos, 3)); g.setAttribute('color', new T3.BufferAttribute(col, 3)); g.setIndex(new T3.BufferAttribute(idx, 1)); g.computeVertexNormals();
     t.mesh = new T3.Mesh(g, new T3.MeshLambertMaterial({vertexColors:true, side:T3.DoubleSide})); t.scene.add(t.mesh);
@@ -1250,11 +1271,20 @@ function carpet3(el, P){
     t.lab.innerHTML = t.labels.map(l => `<span class="${l.c}">${l.t}</span>`).join('') + '<span class="c3day"></span>';
     t.labels.forEach((l, k) => l.el = t.lab.children[k]); t.dayEl = t.lab.lastChild;
     t.bar.innerHTML = `<b>${P.o.u}</b><i></i>` + zt.map(z => `<span style="bottom:${(100*z/P.cz.zmax).toFixed(1)}%">${fN(z)}</span>`).join('');
-    t.bar.querySelector('i').style.background = `linear-gradient(to top, ${a3scale.map(([k, c]) => `${c} ${k*100}%`).join(', ')})`;
+    t.bar.querySelector('i').style.background = `linear-gradient(to top, ${a3sc(A3.q).map(([k, c]) => `${c} ${k*100}%`).join(', ')})`;
   }
   // jour choisi : partie visible, plan et profil (instantané)
   const start = P.d0*23*6, cnt = (nd - 1 - P.d0)*23*6;
-  t.mesh.geometry.setDrawRange(start, cnt); if (t.thm) t.thm.geometry.setDrawRange(start, cnt);
+  t.mesh.geometry.setDrawRange(start, cnt); if (t.thm) t.thm.geometry.setDrawRange(start, cnt); if (t.msm) t.msm.geometry.setDrawRange(start, cnt);
+  // repères rouges sur chaque pointe manquée (visibles quelle que soit la grandeur affichée)
+  if (t.mp){ t.scene.remove(t.mp); t.mp.children.forEach(m => m.geometry.dispose()); t.mpMat && t.mpMat.dispose(); t.mp = null; }
+  if (A3.showMiss !== false && P.cz.MS){
+    const grp = new T3.Group(), mat = t.mpMat = new T3.MeshBasicMaterial({color:0xd62c1a}), MS = P.cz.MS, Z = P.cz.Z;
+    for (let d = P.d0; d < nd; d++) for (let hh = 0; hh < 24; hh++){ const v = MS[hh][d]; if (v <= 0.5) continue;
+      const rr = 1.4 + Math.min(3, v/40), m = new T3.Mesh(new T3.SphereGeometry(rr, 12, 8), mat); m.position.set(d*sx, hh*sy, Z[hh][d]*sz + rr + 0.4); m.userData.miss = {d, h:hh, v}; grp.add(m);
+      const st = new T3.Mesh(new T3.CylinderGeometry(0.25, 0.25, Math.max(0.1, Z[hh][d]*sz + 0.4), 6), mat); st.rotation.x = Math.PI/2; st.position.set(d*sx, hh*sy, (Z[hh][d]*sz + 0.4)/2); grp.add(st); }
+    t.scene.add(grp); t.mp = grp;
+  }
   if (t.mark){ t.scene.remove(t.mark); t.mark.traverse(m => { if (m.geometry){ m.geometry.dispose(); m.material.dispose(); } }); }
   const grp = new T3.Group(), xd = P.ds*sx, zTop = ZH*1.05;
   const pg = new T3.BufferGeometry(); pg.setAttribute('position', new T3.Float32BufferAttribute([xd,0,0, xd,Y,0, xd,Y,zTop, xd,0,0, xd,Y,zTop, xd,0,zTop], 3));
@@ -1278,8 +1308,8 @@ function c3hit(t, e){
 }
 function c3hover(t, e){
   const hit = c3hit(t, e), tip = t.tip; if (!hit){ tip.style.display = 'none'; return; }
-  const P = t.P, z = P.cz.Z[hit.h][hit.d], th = P.hasTH ? P.cz.TH[hit.h][hit.d] : null, rc = t.wrap.getBoundingClientRect();
-  tip.innerHTML = `${new Date(YEAR.t0 + hit.d*86400000).toLocaleDateString('fr-CH', {weekday:'short', day:'numeric', month:'short', year:'numeric', timeZone:'UTC'})}<br>${hit.h}h : <b>${fN(z)} ${P.o.u}</b>${th ? `<br>seuil de pointe ${fN(th)} kW` : ''}`;
+  const P = t.P, z = P.cz.Z[hit.h][hit.d], th = P.hasTH ? P.cz.TH[hit.h][hit.d] : null, ms = P.cz.MS ? P.cz.MS[hit.h][hit.d] : 0, rc = t.wrap.getBoundingClientRect();
+  tip.innerHTML = `${new Date(YEAR.t0 + hit.d*86400000).toLocaleDateString('fr-CH', {weekday:'short', day:'numeric', month:'short', year:'numeric', timeZone:'UTC'})}<br>${hit.h}h : <b>${fN(z)} ${P.o.u}</b>${th ? `<br>seuil de pointe ${fN(th)} kW` : ''}${ms > 0.5 ? `<br><b style="color:#ffb3a8">pointe manquée : +${fN(ms)} kW au-dessus du seuil</b>` : ''}`;
   tip.style.display = 'block'; tip.style.left = (e.clientX - rc.left + 14) + 'px'; tip.style.top = (e.clientY - rc.top + 10) + 'px';
 }
 // ---- instant choisi (jour + quart d'heure) ----

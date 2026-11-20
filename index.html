@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120ze">
+<link rel="stylesheet" href="style.css?v=20261120zg">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120ze"></script>
-<script src="costs.js?v=20261120ze"></script>
+<script src="data.js?v=20261120zg"></script>
+<script src="costs.js?v=20261120zg"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -208,7 +208,7 @@
 <!-- ANALYSE 3D -->
 <section id="tab-a3" class="panel">
   <div class="box a3fsbox" id="a3Box1"><button class="btn sm fsbtn" data-fs="a3Box1">⛶ Plein écran</button><h3>1 · L'année en relief <i class="tip" data-tip="Chaque point est une heure de l'année simulée (365 jours × 24 heures). Hauteur et couleur : la grandeur choisie. Cliquer-glisser pour tourner ; zoom avec les boutons du graphique.">i</i></h3>
-    <div class="row" style="gap:10px"><div class="seg" id="a3Var"></div><div class="seg" id="a3Q"></div><div class="seg" id="a3Top"></div><div class="seg" id="a3Roll"></div></div>
+    <div class="row" style="gap:10px"><div class="seg" id="a3Var"></div><div class="seg" id="a3Q"></div><div class="seg" id="a3Top"></div><div class="seg" id="a3Roll"></div><label class="sw" style="margin-bottom:12px"><input type="checkbox" id="a3Miss" checked><span class="k"></span>Pointes manquées en rouge</label></div>
     <div id="a3Carpet"></div><p class="cap" id="a3CarpetTxt"></p></div>
   <div class="box a3ctl">
     <div class="row" style="gap:10px;margin-bottom:0"><div class="seg" id="a3Var2"></div>
@@ -291,6 +291,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120ze"></script>
+<script src="app.js?v=20261120zg"></script>
 </body>
 </html>
