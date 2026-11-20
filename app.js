@@ -2419,10 +2419,14 @@ function renderXl(){
 function reportAct(only, compact){
   if (typeof only !== 'number') only = null;
   if (compact){
-    // Old Soleol : uniquement le Tableau client et le photomontage de chaque variante
+    // Old Soleol : uniquement le Tableau client et le Graph de chaque variante
     let h = '';
     RES.forEach((r, i) => { if (only !== null && i !== only) return;
-      h += pageFlux(i) + `<div class="pmpage"><h2>Annexe · photomontage ${r.v.name}</h2><img src="photomontage-v${i+1}.jpg" alt="Photomontage ${r.v.name}"><p class="note">${PM_TXT[i]}</p></div>`; });
+      const fl = actFlux(i), mk = (data, colors, idx) => chartImg({type:'bar', data:{labels:fl.map(x=>x.n), datasets:[{data, backgroundColor:colors, barPercentage:.45}]}, options:{layout:{padding:{top:22, right:10}}, plugins:{legend:{display:false}, barLabels:{idx}}, scales:{x:{grid:{display:false}}, y:{grid:{color:'#000',lineWidth:.4}, ticks:{callback:v=>'SFr. '+fN(v)}}}}, plugins:[barLabels]}, 640, 300);
+      const g = pageGraph(i).replace(`<canvas id="xgCf${i}" height="230"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cf), '#1a1a1a', [])}">`)
+        .replace(`<canvas id="xgLq${i}" height="250"></canvas>`, `<img class="ch" src="${mk(fl.map(x=>x.cum), fl.map(x=>[20,25,30].includes(x.n)?'#6ec6f0':'#1a1a1a'), [19,24,29])}">`)
+        .replace('<div class="xfoot">Collaborateur Soleol HBA</div>', '');
+      h += pageFlux(i) + g; });
     const el = document.getElementById('report'); el.classList.add('compact'); el.innerHTML = h.replace(/<input class="xe"[^>]*value="([^"]*)"[^>]*>/g, '$1');
     const imgs = [...el.querySelectorAll('img')];
     Promise.all(imgs.map(i => i.complete ? 0 : new Promise(res => { i.onload = i.onerror = res; }))).then(() => setTimeout(() => { window.print(); setTimeout(() => el.classList.remove('compact'), 1000); }, 100));
