@@ -1394,7 +1394,8 @@ function drawSite(){
   });
   // soleil (direction réelle) et nord
   const toLocal = (az) => [Math.cos((az - GEO.az - 90)*Math.PI/180), Math.cos((az - GEO.az)*Math.PI/180)];
-  const cx = 55, cy = 80, R = geoView ? Math.max(150, 0.3*(geoView.X[1]-geoView.X[0])) : 150;
+  const cx = 55, cy = 80, R = geoView ? Math.max(150, 0.12*(geoView.X[1]-geoView.X[0])) : 150;
+  if (geoView) geoView.z1 = Math.max(geoView.z1, R + 20);
   if (sun.el > 0){
     const [dx, dy] = toLocal(sun.az), ce = Math.cos(sun.el*Math.PI/180), sz = Math.sin(sun.el*Math.PI/180);
     const sx = cx + R*ce*dx, sy = cy + R*ce*dy, szz = R*sz;
