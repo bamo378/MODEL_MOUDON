@@ -1087,7 +1087,7 @@ function renderA3(){
   a3Tabs();
   const d = document.getElementById('a3Day'); if (document.activeElement !== d) d.value = A3.day;
   const q = document.getElementById('a3Qh'); if (document.activeElement !== q) q.value = A3.qh;
-  loadPlotly(() => { drawCarpet(); drawSite(); });
+  loadThree(() => { drawCarpet(); drawSite(); });
   drawFlow();
 }
 // 1) Tapis de l'année : jours × heures × puissance
@@ -1119,6 +1119,7 @@ function drawCarpet(){
     if (el.data && window.Plotly){ Plotly.purge(el); el._ckey = null; }
     carpet3(el, {cz, nd, ds, d0, zs, dLbl, o, hasTH: cz.hasTH});
   } else {
+    if (!window.Plotly){ loadPlotly(drawCarpet); return; }
     if (el._t3) carpet3Dispose(el);
     const hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`, cd = hrs.map(() => days), xs = days.map((_, d) => d);
     const shapes = [{type:'rect', x0:-0.5, x1:d0 - 0.5, y0:-0.5, y1:23.5, fillcolor:'#ffffff', opacity:roll && d0 > 0 ? 0.92 : 0, line:{width:0}},
@@ -1148,7 +1149,7 @@ function drawCarpet(){
 function a3PickDay(d){
   const nd = Math.floor(YEAR.n/96); d = Math.max(0, Math.min(nd - 1, d));
   A3.day = new Date(YEAR.t0 + d*86400000).toISOString().slice(0,10); document.getElementById('a3Day').value = A3.day;
-  drawCarpet(); drawFlow(); clearTimeout(a3PickDay.t); a3PickDay.t = setTimeout(drawSite, 300);
+  drawCarpet(); drawFlow(); clearTimeout(a3PickDay.t); a3PickDay.t = setTimeout(drawSite, 30);
 }
 // molette = jours (Ctrl + molette = zoom de la vue 3D) ; enregistrée une seule fois
 function a3CarpetEvents(el){
@@ -1160,7 +1161,7 @@ function a3CarpetEvents(el){
     let n = Math.trunc(acc/80); if (!n) return; acc -= n*80; n = Math.max(-10, Math.min(10, n));
     a3Day(n*(e.shiftKey ? 7 : 1));
     cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { drawCarpet(); drawFlow(); });
-    clearTimeout(slow); slow = setTimeout(drawSite, 450);
+    clearTimeout(slow); slow = setTimeout(drawSite, 60);
   }, {passive:false, capture:true});
 }
 function loadThree(cb){
@@ -1504,8 +1505,121 @@ ${pm}
 </Document></kml>`;
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([kml], {type:'application/vnd.google-earth.kml+xml'})); a.download = `Model_Moudon_panneaux_${V}.kml`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
+// ---- Rendu 3D léger (three.js) du site : la scène est construite une fois, puis seuls les panneaux et le soleil changent ----
+const S3G = new WeakMap(); let S3K = 1.3;
+function s3rgb(c){ const m = /rgba?\(([^)]+)\)/.exec(c); if (m){ const p = m[1].split(',').map(Number); return [p[0]/255, p[1]/255, p[2]/255]; } const t = new THREE.Color(c); return [t.r, t.g, t.b]; }
+function s3geo(t){
+  const zk = t.z; let g = S3G.get(zk); if (g && g._x === t.x) return g;
+  const n = t.x.length, pos = new Float32Array(n*3); for (let k = 0; k < n; k++){ pos[3*k] = t.x[k]; pos[3*k+1] = t.y[k]; pos[3*k+2] = t.z[k]; }
+  g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = t.i.length, idx = n > 65535 ? new Uint32Array(m*3) : new Uint16Array(m*3); for (let k = 0; k < m; k++){ idx[3*k] = t.i[k]; idx[3*k+1] = t.j[k]; idx[3*k+2] = t.k[k]; }
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  if (t.vertexcolor){ const c = new Float32Array(n*3); const cache = {}; for (let k = 0; k < n; k++){ const s = t.vertexcolor[k]; c.set(cache[s] || (cache[s] = s3rgb(s)), 3*k); } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+  g.computeVertexNormals(); g._x = t.x; g._keep = n > 2000; if (g._keep) S3G.set(zk, g);
+  return g;
+}
+function s3dispose(t){ t.root.traverse(o => { if (o.geometry && !o.geometry._keep) o.geometry.dispose(); if (o.material) o.material.dispose(); }); t.scene.remove(t.root); }
+function site3(el, tr, O){
+  const T3 = THREE; let t = el._s3;
+  if (!t){
+    if (el.data && window.Plotly) Plotly.purge(el);
+    el.innerHTML = ''; const wrap = document.createElement('div'); wrap.className = 'c3wrap'; el.appendChild(wrap);
+    const renderer = new T3.WebGLRenderer({antialias:true}); renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); wrap.appendChild(renderer.domElement);
+    const lab = document.createElement('div'); lab.className = 'c3lab'; wrap.appendChild(lab);
+    const tip = document.createElement('div'); tip.className = 'c3tip'; wrap.appendChild(tip);
+    const btn = document.createElement('div'); btn.className = 'c3btn'; btn.style.right = '10px'; btn.innerHTML = '<button data-z="in" title="Zoom avant">+</button><button data-z="out" title="Zoom arrière">−</button><button data-z="reset" title="Vue de départ">⟲</button>'; wrap.appendChild(btn);
+    const scene = new T3.Scene(), camera = new T3.PerspectiveCamera(30, 2, 1, 40000); camera.up.set(0, 0, 1);
+    scene.add(new T3.AmbientLight(0xffffff, 0.62)); const dl = new T3.DirectionalLight(0xffffff, 0.55); dl.position.set(-1000, -2000, 3000); scene.add(dl);
+    const dl2 = new T3.DirectionalLight(0xffffff, 0.15); dl2.position.set(1500, 800, 1200); scene.add(dl2);
+    t = el._s3 = {wrap, renderer, scene, camera, lab, tip, root:null, view:null, center:new T3.Vector3(), labels:[]};
+    t.place = () => { const v = t.view, c = t.center; camera.position.set(c.x + v.r*Math.cos(v.ph)*Math.cos(v.th), c.y + v.r*Math.cos(v.ph)*Math.sin(v.th), c.z + v.r*Math.sin(v.ph)); camera.lookAt(c); };
+    t.req = () => { if (t.pend) return; t.pend = true; requestAnimationFrame(() => { t.pend = false; if (!t.view) return; t.place(); renderer.render(scene, camera); s3labels(t); }); };
+    t.zoom = f => { t.view.r = Math.max(30, Math.min(30000, t.view.r*f)); t.req(); };
+    btn.onclick = e => { const z = e.target.dataset.z; if (z === 'in') t.zoom(1/1.25); if (z === 'out') t.zoom(1.25); if (z === 'reset'){ t.view = Object.assign({}, t.v0); t.center.copy(t.c0); t.req(); } };
+    let drag = null; const cv = renderer.domElement;
+    cv.addEventListener('contextmenu', e => e.preventDefault());
+    cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); t.zoom(e.deltaY > 0 ? 1.12 : 1/1.12); }, {passive:false});
+    cv.addEventListener('pointerdown', e => { drag = {x:e.clientX, y:e.clientY, b:e.button, s:e.shiftKey, moved:false}; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove', e => {
+      if (drag){ const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; drag.x = e.clientX; drag.y = e.clientY;
+        if (drag.b === 2 || drag.s){ const k = t.view.r/700, rt = new T3.Vector3().setFromMatrixColumn(camera.matrix, 0), up = new T3.Vector3().setFromMatrixColumn(camera.matrix, 1);
+          t.center.addScaledVector(rt, -dx*k).addScaledVector(up, dy*k); }
+        else { t.view.th -= dx*0.008; t.view.ph = Math.max(0.04, Math.min(1.55, t.view.ph + dy*0.006)); }
+        tip.style.display = 'none'; t.req(); return; }
+      t.mx = e; if (!t.hovP){ t.hovP = true; requestAnimationFrame(() => { t.hovP = false; s3hover(t, t.mx); }); }
+    });
+    cv.addEventListener('pointerup', e => { const d = drag; drag = null; if (d && !d.moved && d.b === 0){ const h = s3hit(t, e); if (h && h.object.userData.zone !== undefined){ A3.zone = h.object.userData.zone; drawSite(); } } });
+    cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+    t.ro = new ResizeObserver(() => s3size(t)); t.ro.observe(wrap); t.ray = new T3.Raycaster();
+  }
+  const h = a3H('a3Site', 560); if (t.h !== h){ t.h = h; s3size(t); }
+  if (t.key !== O.key){
+    // reconstruction complète (changement de variante, de fond, de zone choisie…)
+    t.key = O.key; if (t.root) s3dispose(t);
+    const root = new T3.Group(); t.root = root; t.zones = []; t.labels = []; t.sun = [];
+    t.renderer.setClearColor(new T3.Color(O.bg));
+    tr.forEach((d, n) => {
+      let obj = null;
+      if (d.type === 'mesh3d'){
+        const g = s3geo(d), lt = d.lighting || {}, op = d.opacity ?? 1;
+        let mat;
+        if (d.vertexcolor) mat = (lt.ambient ?? 0) >= 0.88 ? new T3.MeshBasicMaterial({vertexColors:true, side:T3.DoubleSide}) : new T3.MeshLambertMaterial({vertexColors:true, side:T3.DoubleSide});
+        else mat = new T3.MeshPhongMaterial({color:d.color || '#cccccc', flatShading:d.flatshading !== false, shininess:(lt.specular ?? 0.15) > 0.4 ? 40 : 8, specular:(lt.specular ?? 0.15) > 0.4 ? 0x2a2a2a : 0x0a0a0a, side:T3.DoubleSide, transparent:op < 1, opacity:op, depthWrite:op >= 1});
+        obj = new T3.Mesh(g, mat);
+        if (d.hoverinfo === 'text' && d.text) obj.userData.tip = String(d.text[0]).replace(/<br>/g, '<br>');
+      } else if (d.type === 'scatter3d'){
+        obj = new T3.Group(); const md = d.mode || '';
+        if (md.includes('lines') && d.x.length > 1){
+          const pts = d.x.map((x, k) => new T3.Vector3(x, d.y[k], d.z[k])), lc = d.line && typeof d.line.color === 'string' ? d.line.color : '#333333';
+          const g = new T3.BufferGeometry().setFromPoints(pts.filter((p, k) => !(d.line && Array.isArray(d.line.color) && /rgba\(0,0,0,0\)/.test(d.line.color[k]))));
+          const dash = d.line && d.line.dash, ln = new T3.Line(g, dash ? new T3.LineDashedMaterial({color:lc, dashSize:4, gapSize:3}) : new T3.LineBasicMaterial({color:lc}));
+          if (dash) ln.computeLineDistances(); obj.add(ln);
+        }
+        if (md.includes('markers')){
+          const mk = d.marker || {}, col = typeof mk.color === 'string' ? mk.color : '#888888', r = (mk.size || 6)*0.3;
+          const sg = new T3.SphereGeometry(r, 16, 12), sm = /ffcf33/i.test(col) ? new T3.MeshBasicMaterial({color:col}) : new T3.MeshLambertMaterial({color:col, transparent:(mk.opacity ?? 1) < 1, opacity:mk.opacity ?? 1});
+          d.x.forEach((x, k) => { const s = new T3.Mesh(sg, sm); s.position.set(x, d.y[k], d.z[k]); obj.add(s); });
+          if (d.hovertext) obj.children.forEach(c => c.userData && (c.userData.tip = d.hovertext[0]));
+        }
+        if (md.includes('text') && d.text){
+          d.text.forEach((tx, k) => { if (!tx) return; const e = document.createElement('span'); e.className = 'c3ax'; e.textContent = tx; if (d.textfont && d.textfont.color){ e.style.color = d.textfont.color; e.style.fontWeight = 600; } t.lab.appendChild(e);
+            t.labels.push({el:e, p:[d.x[k], d.y[k], d.z[k] + 6], obj}); });
+        }
+      }
+      if (!obj) return;
+      if (d.visible === false) obj.visible = false;
+      const zk = O.zoneIdx.indexOf(n); if (zk >= 0){ obj.userData.zone = zk; t.zones[zk] = obj; }
+      if (n === O.sunIdx || n === O.sunIdx + 1) t.sun.push({obj, d});
+      root.add(obj);
+    });
+    t.lab.innerHTML = ''; t.labels.forEach(l => t.lab.appendChild(l.el));
+    t.scene.add(root);
+    // vue de départ, reprise du cadrage Plotly (œil exprimé en unités de la boîte)
+    const V = O.view, cx = (V.X[0] + V.X[1])/2, cy = (V.Y[0] + V.Y[1])/2, cz = (V.Z[0] + V.Z[1])/2, u = Math.max(V.X[1]-V.X[0], V.Y[1]-V.Y[0])/V.amax/2;
+    const K = 2*S3K, c0 = new T3.Vector3(cx + V.center.x*u*K, cy + V.center.y*u*K, cz + V.center.z*u*K), e = V.eye, r = Math.hypot(e.x, e.y, e.z)*u*K;
+    const v0 = {th:Math.atan2(e.y, e.x), ph:Math.atan2(e.z, Math.hypot(e.x, e.y)), r};
+    if (t.vkey !== O.vkey){ t.vkey = O.vkey; t.view = Object.assign({}, v0); t.center.copy(c0); }
+    t.v0 = v0; t.c0 = c0;
+  } else {
+    // mise à jour légère : couleur des panneaux et position du soleil
+    O.zoneIdx.forEach((n, k) => { const z = t.zones[k]; if (z && z.material && z.material.color) z.material.color.set(tr[n].color); });
+    t.sun.forEach(({obj}, k) => { const d = tr[O.sunIdx + k]; obj.visible = d.visible !== false;
+      if (k === 0){ const ln = obj.children[0]; if (ln){ ln.geometry.setFromPoints([new T3.Vector3(d.x[0], d.y[0], d.z[0]), new T3.Vector3(d.x[1], d.y[1], d.z[1])]); ln.computeLineDistances(); } }
+      else { obj.children.forEach(c => { c.position.set(d.x[0], d.y[0], d.z[0]); if (d.hovertext) c.userData.tip = d.hovertext[0]; }); t.labels.filter(l => l.obj === obj).forEach(l => { l.p = [d.x[0], d.y[0], d.z[0] + 6]; l.el.style.visibility = obj.visible ? '' : 'hidden'; }); } });
+  }
+  t.req();
+}
+function s3size(t){ const w = t.wrap.clientWidth || 800, h = t.h || 560; t.wrap.style.height = h + 'px'; t.renderer.setSize(w, h); t.camera.aspect = w/h; t.camera.updateProjectionMatrix(); t.req(); }
+function s3labels(t){ const w = t.wrap.clientWidth, h = t.h, v = new THREE.Vector3();
+  t.labels.forEach(l => { if (l.obj && !l.obj.visible){ l.el.style.display = 'none'; return; } v.set(l.p[0], l.p[1], l.p[2]).project(t.camera); if (v.z > 1){ l.el.style.display = 'none'; return; } l.el.style.display = ''; l.el.style.transform = `translate(${((v.x + 1)/2*w).toFixed(1)}px, ${((1 - v.y)/2*h).toFixed(1)}px) translate(-50%, -100%)`; }); }
+function s3hit(t, e){ const rc = t.renderer.domElement.getBoundingClientRect(), m = new THREE.Vector2(((e.clientX - rc.left)/rc.width)*2 - 1, -((e.clientY - rc.top)/rc.height)*2 + 1);
+  t.ray.setFromCamera(m, t.camera); const hs = t.ray.intersectObjects(t.root ? t.root.children : [], true); return hs.find(x => x.object.visible && (x.object.userData.tip || x.object.userData.zone !== undefined || (x.object.parent && x.object.parent.userData.zone !== undefined))) || null; }
+function s3hover(t, e){ const h = s3hit(t, e), tip = t.tip; if (!h || !h.object.userData.tip){ tip.style.display = 'none'; t.renderer.domElement.style.cursor = ''; return; }
+  const rc = t.wrap.getBoundingClientRect(); tip.innerHTML = h.object.userData.tip; tip.style.display = 'block'; tip.style.left = (e.clientX - rc.left + 14) + 'px'; tip.style.top = (e.clientY - rc.top + 10) + 'px';
+  t.renderer.domElement.style.cursor = h.object.userData.zone !== undefined ? 'pointer' : ''; }
 function drawSite(){
-  if (!window.Plotly) return;
+  if (A3.three !== false && !window.THREE){ loadThree(drawSite); return; }
+  if (A3.three === false && !window.Plotly){ loadPlotly(drawSite); return; }
   const vi = A3.v, now = a3Now(), sun = sunPos(now.i), light = Math.max(0, Math.min(1, now.shape));
   const tr = [], M = (o, m) => tr.push(Object.assign({type:'mesh3d', flatshading:true, hoverinfo:'skip', lighting:{ambient:0.62, diffuse:0.75, specular:0.15, roughness:0.8}, lightposition:{x:-1000, y:-2000, z:3000}}, o, m));
   // environnement : terrain, routes, parking, voie ferrée, voisins
@@ -1566,7 +1680,12 @@ function drawSite(){
   const gv = geoView, gsx = gv ? gv.X[1]-gv.X[0] : 1, gsy = gv ? gv.Y[1]-gv.Y[0] : 1, gk = gv ? 1.5/Math.max(gsx, gsy) : 1, big = gv && gsx > 1000;
   const sc = geoOn ? {xaxis:{visible:false, range:gv.X}, yaxis:{visible:false, range:gv.Y}, zaxis:{visible:false, range:[gv.z0, gv.z1]}, aspectmode:'manual', aspectratio:{x:gsx*gk, y:gsy*gk, z:Math.max(0.12, (gv.z1-gv.z0)*gk)}, camera:big ? {eye:{x:-0.75, y:-0.95, z:0.65}, center:{x:0, y:0, z:-0.1}} : {eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
     : {xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'};
-  const sel3 = document.getElementById('a3Site'), skey = [geoOn, GEO.size, GEO.ex, vi, A3.zone, a3H('a3Site', 1), GEO.st, GEO.o[GEO.size] && GEO.o[GEO.size].st, tr.length].join('|');
+  const sel3 = document.getElementById('a3Site');
+  if (window.THREE && A3.three !== false){
+    const V = geoOn ? {X:gv.X, Y:gv.Y, Z:[gv.z0, gv.z1], amax:1.5, eye:sc.camera.eye, center:sc.camera.center} : {X:[-75,185], Y:[-85,255], Z:[-1,155], amax:1.7, eye:sc.camera.eye, center:sc.camera.center};
+    site3(sel3, tr, {key:[geoOn, GEO.size, GEO.ex, vi, A3.zone, GEO.st, GEO.o[GEO.size] && GEO.o[GEO.size].st, tr.length].join('|'), vkey:[geoOn, GEO.size].join('|'), zoneIdx, sunIdx, view:V, bg:sc.bgcolor});
+  } else {
+  const skey = [geoOn, GEO.size, GEO.ex, vi, A3.zone, a3H('a3Site', 1), GEO.st, GEO.o[GEO.size] && GEO.o[GEO.size].st, tr.length].join('|');
   if (sel3._skey === skey && sel3.data && sel3.data.length === tr.length){
     // seuls les panneaux (couleur selon la production) et le soleil changent : mise à jour légère
     Plotly.restyle(sel3, {color:zoneIdx.map(k => tr[k].color)}, zoneIdx);
@@ -1574,9 +1693,8 @@ function drawSite(){
   } else { sel3._skey = skey;
   Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Site', 560), font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo-' + (gv && gsx > 600 ? GEO.size : 'site') : 'site', paper_bgcolor:'#fff', scene:sc},
     {responsive:true, displaylogo:false, scrollZoom:false}); }
-  const el = sel3;
-  if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
-  el._zoneIdx = zoneIdx;
+  if (!sel3._a3click){ sel3._a3click = true; sel3.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (sel3._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
+  sel3._zoneIdx = zoneIdx; }
   const inf = document.getElementById('a3SiteInfo');
   if (!inf._geo){ inf._geo = true; inf.addEventListener('click', ev => {
     if (ev.target.id === 'a3Geo'){ A3.geo = A3.geo === false; if (A3.geo && GEO.st === 'err'){ GEO.st = 'idle'; } drawSite(); }
@@ -1632,9 +1750,9 @@ function drawFlow(){
   document.getElementById('a3FlowTxt').innerHTML = `${v.name} · ${a3TimeTxt()}. ${peakTxt}`;
 }
 let a3Timer = null;
-function a3Step(dq){ A3.qh += dq; if (A3.qh > 95){ A3.qh = 0; a3Day(1); } if (A3.qh < 0){ A3.qh = 95; a3Day(-1); } document.getElementById('a3Qh').value = A3.qh; drawFlow(); if (window.Plotly) drawSite(); }
+function a3Step(dq){ A3.qh += dq; if (A3.qh > 95){ A3.qh = 0; a3Day(1); } if (A3.qh < 0){ A3.qh = 95; a3Day(-1); } document.getElementById('a3Qh').value = A3.qh; drawFlow(); drawSite(); }
 function a3Day(dd){ const d = new Date(A3.day + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + dd); const iso = d.toISOString().slice(0,10); if (iso >= '2025-10-01' && iso <= '2026-09-30') A3.day = iso; document.getElementById('a3Day').value = A3.day; }
-document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); if (window.Plotly){ drawSite(); drawCarpet(); } };
+document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); drawSite(); drawCarpet(); };
 // Plein écran des graphiques 3D + raccourcis clavier (← → heure, ↑ ↓ jour, espace lecture)
 function a3FsEl(){ return document.fullscreenElement || document.querySelector('.a3fsbox.fsfake'); }
 function a3H(id, def){ const f = a3FsEl(), el = document.getElementById(id); return f && el && f.contains(el) ? Math.max(def, window.innerHeight - (id === 'a3Carpet' ? 150 : 90)) : def; }
@@ -1642,7 +1760,7 @@ function a3H(id, def){ const f = a3FsEl(), el = document.getElementById(id); ret
 function a3FsChanged(){
   document.querySelectorAll('[data-fs]').forEach(b => { const f = a3FsEl(); b.textContent = f && f.id === b.dataset.fs ? '✕ Quitter le plein écran' : '⛶ Plein écran'; });
   document.body.classList.toggle('fsopen', !!document.querySelector('.a3fsbox.fsfake'));
-  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); ['a3Carpet', 'a3Site'].forEach(id => { const el = document.getElementById(id); if (el && el.data) Plotly.Plots.resize(el); }); }, 120);
+  if (document.getElementById('tab-a3').classList.contains('active')) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); ['a3Carpet', 'a3Site'].forEach(id => { const el = document.getElementById(id); if (el && el.data && window.Plotly) Plotly.Plots.resize(el); }); }, 120);
 }
 function a3FsExit(){ if (document.fullscreenElement) document.exitFullscreen(); document.querySelectorAll('.a3fsbox.fsfake').forEach(x => x.classList.remove('fsfake')); a3FsChanged(); }
 document.querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { const box = document.getElementById(b.dataset.fs);
@@ -1657,7 +1775,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); a3Step(e.key === 'ArrowRight' ? 4 : -4); }
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown'){ e.preventDefault(); a3Day(e.key === 'ArrowUp' ? 1 : -1); a3PickDay(Math.round((Date.parse(A3.day + 'T00:00:00Z') - YEAR.t0)/86400000)); }
   else if (e.key === ' ' && a3FsEl()){ e.preventDefault(); document.getElementById('a3Play').click(); } });
-document.getElementById('a3Qh').oninput = e => { A3.qh = +e.target.value; drawFlow(); if (window.Plotly) drawSite(); };
+document.getElementById('a3Qh').oninput = e => { A3.qh = +e.target.value; drawFlow(); drawSite(); };
 document.getElementById('a3Play').onclick = () => {
   A3.play = !A3.play; document.getElementById('a3Play').textContent = A3.play ? '❚❚ Pause' : '▶ Lecture';
   clearInterval(a3Timer); if (A3.play) a3Timer = setInterval(() => { if (!document.getElementById('tab-a3').classList.contains('active')){ A3.play = false; clearInterval(a3Timer); document.getElementById('a3Play').textContent = '▶ Lecture'; return; } a3Step(1); }, +document.getElementById('a3Speed').value);
