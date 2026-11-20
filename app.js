@@ -1261,14 +1261,14 @@ async function geoLoad(){
     for (let j = 0; j < gy; j++) for (let i = 0; i < gx; i++){
       const x = GEO.X[0] + i*st, y = GEO.Y[0] + j*st; let z = zAt(x, y); if (inFoot(x, y, 2.5)) z = Math.min(z, -0.15);
       G.x.push(x); G.y.push(y); G.z.push(z); G.c.push(col(x, y, 2));
-      if (i < gx-1 && j < gy-1){ const a = j*gx + i; G.i.push(a, a+1); G.j.push(a+1, a+gx+1); G.k.push(a+gx+1, a+gx); }
+      if (i < gx-1 && j < gy-1){ const a = j*gx + i; G.i.push(a, a); G.j.push(a+1, a+gx+1); G.k.push(a+gx+1, a+gx); }
     }
     // toitures de l'usine texturées avec la photo aérienne
     const R = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]};
     SITE_B.forEach(b => { const s2 = 2, nx = Math.max(2, Math.round((b.r[1]-b.r[0])/s2) + 1), ny = Math.max(2, Math.round((b.r[3]-b.r[2])/s2) + 1), o = R.x.length;
       for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++){ const x = b.r[0] + i*(b.r[1]-b.r[0])/(nx-1), y = b.r[2] + j*(b.r[3]-b.r[2])/(ny-1);
         R.x.push(x); R.y.push(y); R.z.push(b.h + 0.03); R.c.push(col(x, y, 1));
-        if (i < nx-1 && j < ny-1){ const a = o + j*nx + i; R.i.push(a, a+1); R.j.push(a+1, a+nx+1); R.k.push(a+nx+1, a+nx); } } });
+        if (i < nx-1 && j < ny-1){ const a = o + j*nx + i; R.i.push(a, a); R.j.push(a+1, a+nx+1); R.k.push(a+nx+1, a+nx); } } });
     // bâtiments voisins : emprises VECTOR25 extrudées (hauteur estimée selon la surface)
     const nb = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]}, nbTxt = []; let nN = 0;
     ((await idf).results || []).forEach(f => {
