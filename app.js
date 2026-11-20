@@ -1171,7 +1171,8 @@ function actFlux(i){
     const avail = total - r.dep - interet;
     const remb = Math.max(Math.min(debt, avail), 0); debt -= remb;
     const cf = avail - remb + extra; cum += cf;
-    if (pay === null && debtStart > 0 && debt <= 1e-6) pay = n;
+    if (pay === null && debtStart > 0 && debt <= 1e-6) pay = n - 1 + (avail > 0 ? remb/avail : 1); // même calcul que les cartes
+    out.pay = pay;
     out.push({n, kwc:(v.acKwc+v.rueKwc)*f, prod:(v.prodAc+v.prodRue)*f, prodCum, kwhAc:kwhAc*f, remb, subv, debt, interet, vente, auto, puiss, react, total, cumV, cf, cum});
   }
   return out;
@@ -1233,7 +1234,7 @@ function pageGraph(i){
   return `<div class="xlpage">${xlHeader(r, `Model SA à Moudon ${v.name} ${new Date().toLocaleDateString('fr-CH',{day:'numeric',month:'long',year:'numeric'})}`)}
    <div class="xgbox"><div class="xgtitle">Cash-flow annuel :<br>toutes les liquidités dégagées les premières années sont utilisées pour rembourser intégralement la dette</div><canvas id="xgCf${i}" height="230"></canvas></div>
    <div class="xgbox"><div class="xgtitle" style="text-align:left;margin-left:50px">liquidités cumulées</div><canvas id="xgLq${i}" height="250"></canvas></div>
-   <div class="xliq">Liquidités cumulées avec subvention unique,<br>investissement ENTIÈREMENT payé${fl.find(x=>x.debt<=1e-6)?` (après ${fl.find(x=>x.debt<=1e-6).n} ans)`:''}</div>
+   <div class="xliq">Liquidités cumulées avec subvention unique,<br>investissement ENTIÈREMENT payé${fl.pay != null ? ` (après ${fN(fl.pay,1)} ans)` : ''}</div>
    <div class="xliq" style="margin-top:6px">20 ans <span class="bx">${sfr(y20)}</span> soit ${sfr(y20/surf)}/m2</div>
    <div class="xfoot">Collaborateur Soleol HBA</div></div>`;
 }
@@ -1286,7 +1287,7 @@ function renderAct(){
     row('Marge (CHF / %)', (r,i)=>fCHF(sheets[i].marge)+' / '+fN(sheets[i].pct*100,2)+' %', 1) +
     row('Rétribution unique (CHF)', r=>fCHF(r.sub)) + row('Hypothèque (CHF)', r=>fCHF(r.net)) +
     row('Recettes 1re année (CHF)', (r,i)=>fCHF(F[i][0].total)) + row('Taux d\'autoconsommation (simulé)', r=>fN(r.tauxAc*100,1)+' %') +
-    row('Investissement entièrement payé après', (r,i)=>{ const x = F[i].find(y=>y.debt<=1e-6); return x ? x.n+' ans' : '> 30 ans'; }, 1) +
+    row('Investissement entièrement payé après', (r,i)=> F[i].pay != null ? fN(F[i].pay,1)+' ans' : '> 30 ans', 1) +
     row('Liquidités cumulées à 20 / 25 / 30 ans (CHF)', (r,i)=>[19,24,29].map(k=>fCHF(F[i][k].cum)).join(' / '), 1) + '</tbody>';
   segs('actSel', actIdx, i => { actIdx = i; renderAct(); });
   togs('actTog', actIdx);
