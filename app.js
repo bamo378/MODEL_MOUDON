@@ -1270,7 +1270,7 @@ async function geoLoad(){
         R.x.push(x); R.y.push(y); R.z.push(b.h + 0.03); R.c.push(col(x, y, 1));
         if (i < nx-1 && j < ny-1){ const a = o + j*nx + i; R.i.push(a, a); R.j.push(a+1, a+nx+1); R.k.push(a+nx+1, a+nx); } } });
     // bâtiments voisins : emprises VECTOR25 extrudées (hauteur estimée selon la surface)
-    const nb = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]}, nbTxt = []; let nN = 0;
+    const nb = {x:[], y:[], z:[], zb:[], i:[], j:[], k:[], c:[]}, nbTxt = []; let nN = 0;
     ((await idf).results || []).forEach(f => {
       const gm = f.geometry || {}, polys = gm.type === 'MultiPolygon' ? gm.coordinates : gm.type === 'Polygon' ? [gm.coordinates] : [];
       polys.forEach(pl => {
@@ -1282,7 +1282,7 @@ async function geoLoad(){
         const area = Math.abs(P.reduce((s, p, i) => { const q = P[(i+1)%P.length]; return s + p[0]*q[1] - q[0]*p[1]; }, 0))/2;
         const hgt = area < 250 ? 6.5 : area < 1200 ? 9 : 11, z0 = Math.min(...P.map(p => zAt(p[0], p[1]))) - 0.3, o = nb.x.length, n = P.length;
         const roofC = col(cxl, cyl, 3), wallC = '#d8d4cc';
-        P.forEach(p => { nb.x.push(p[0], p[0]); nb.y.push(p[1], p[1]); nb.z.push(z0, z0 + 0.3 + hgt); nb.c.push(wallC, roofC); });
+        P.forEach(p => { nb.x.push(p[0], p[0]); nb.y.push(p[1], p[1]); nb.z.push(z0, z0 + 0.3 + hgt); nb.zb.push(z0, z0); nb.c.push(wallC, roofC); });
         for (let i = 0; i < n; i++){ const a = o + 2*i, b = o + 2*((i+1)%n); nb.i.push(a, a); nb.j.push(b, b+1); nb.k.push(b+1, a+1); }
         earcut2(P).forEach(t => { nb.i.push(o + 2*t[0] + 1); nb.j.push(o + 2*t[1] + 1); nb.k.push(o + 2*t[2] + 1); });
         nN++;
@@ -1295,6 +1295,43 @@ async function geoLoad(){
   }
   drawSite();
 }
+// Relief élargi : maillage plus grossier autour du site (photo aérienne + relief), chargé à la demande
+const GEO_SIZES = {site:{t:'Site (0,5 km)', s:0}, quartier:{t:'Quartier (1,5 km)', s:1500, nx:23, img:1600}, vallee:{t:'Vallée (4 km)', s:4000, nx:31, img:2000}};
+GEO.size = 'site'; GEO.ex = 1; GEO.o = {};
+async function geoLoadOuter(key){
+  const S = GEO_SIZES[key]; if (!S.s || GEO.o[key]) return;
+  GEO.o[key] = {st:'loading'}; GEO.msg = `Chargement du relief élargi (${S.t})…`; setTimeout(drawSite, 0);
+  try {
+    const cxm = 62, cym = 72, X = [cxm - S.s/2, cxm + S.s/2], Y = [cym - S.s/2, cym + S.s/2];
+    const cs = [[X[0],Y[0]],[X[1],Y[0]],[X[1],Y[1]],[X[0],Y[1]]].map(p => l2g(p[0], p[1]));
+    const bx = [Math.floor(Math.min(...cs.map(c=>c[0]))), Math.floor(Math.min(...cs.map(c=>c[1]))), Math.ceil(Math.max(...cs.map(c=>c[0]))), Math.ceil(Math.max(...cs.map(c=>c[1])))];
+    const W = S.img, H = Math.round(W*(bx[3]-bx[1])/(bx[2]-bx[0]));
+    const NX = S.nx, NY = S.nx, ys = [...Array(NY)].map((_, k) => Y[0] + k*(Y[1]-Y[0])/(NY-1));
+    const prof = ys.map(y => { const g = JSON.stringify({type:'LineString', coordinates:[l2g(X[0], y), l2g(X[1], y)].map(p => p.map(v => Math.round(v*10)/10))});
+      return fetch(`https://api3.geo.admin.ch/rest/services/profile.json?sr=2056&nb_points=${NX}&geom=${encodeURIComponent(g)}`).then(r => r.json()); });
+    const img = await fetch(`https://wms.geo.admin.ch/?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ch.swisstopo.swissimage&STYLES=&CRS=EPSG:2056&BBOX=${bx.join(',')}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/jpeg`).then(r => { if (!r.ok) throw new Error('wms'); return r.blob(); }).then(b => createImageBitmap(b));
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, W, H);
+    const px = cx.getImageData(0, 0, W, H).data;
+    const Hg = (await Promise.all(prof)).map(p => { const a = p.map(q => (q.alts && (q.alts.COMB ?? q.alts.DTM2 ?? q.alts.DTM25)) ?? GEO.h0); while (a.length < NX) a.push(a[a.length-1] ?? GEO.h0); return a.slice(0, NX); });
+    const zAt = (x, y) => { const fx = Math.max(0, Math.min(NX-1.001, (x-X[0])/(X[1]-X[0])*(NX-1))), fy = Math.max(0, Math.min(NY-1.001, (y-Y[0])/(Y[1]-Y[0])*(NY-1)));
+      const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+      return (Hg[j][i]*(1-u)*(1-v) + Hg[j][i+1]*u*(1-v) + Hg[j+1][i]*(1-u)*v + Hg[j+1][i+1]*u*v) - GEO.h0; };
+    const col = (x, y) => { const [E, N] = l2g(x, y), cxp = (E - bx[0])/(bx[2]-bx[0])*W, cyp = (bx[3] - N)/(bx[3]-bx[1])*H; let r = 0, g = 0, b = 0, n = 0;
+      for (let a = -3; a <= 3; a += 3) for (let c = -3; c <= 3; c += 3){ const Xp = Math.round(cxp + a), Yp = Math.round(cyp + c); if (Xp < 0 || Yp < 0 || Xp >= W || Yp >= H) continue; const o = (Yp*W + Xp)*4; r += px[o]; g += px[o+1]; b += px[o+2]; n++; }
+      return n ? `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})` : 'rgb(200,205,190)'; };
+    const st = S.s/150, g = Math.round(S.s/st) + 1, G = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]};
+    for (let j = 0; j < g; j++) for (let i = 0; i < g; i++){ const x = X[0] + i*st, y = Y[0] + j*st; G.x.push(x); G.y.push(y); G.z.push(zAt(x, y) - 0.4); G.c.push(col(x, y)); }
+    // on ne garde que les mailles qui débordent de la zone détaillée (évite les doublons)
+    for (let j = 0; j < g-1; j++) for (let i = 0; i < g-1; i++){
+      const x0 = X[0] + i*st, y0 = Y[0] + j*st; if (x0 >= GEO.X[0] && x0 + st <= GEO.X[1] && y0 >= GEO.Y[0] && y0 + st <= GEO.Y[1]) continue;
+      const a = j*g + i; G.i.push(a, a); G.j.push(a+1, a+g+1); G.k.push(a+g+1, a+g); }
+    GEO.o[key] = {st:'ok', X, Y, G, zmin:Math.min(...G.z), zmax:Math.max(...G.z)};
+    GEO.msg = '';
+  } catch (e){ GEO.o[key] = {st:'err'}; GEO.msg = 'Relief élargi indisponible pour le moment (connexion ?).'; }
+  drawSite();
+}
+// Exagération du relief (multiplie les hauteurs du terrain, pas les bâtiments)
+function geoEx(m, key){ if (GEO.ex === 1) return m.z; m._ex = m._ex || {}; return m._ex[GEO.ex] || (m._ex[GEO.ex] = m.z.map((z, k) => z + (GEO.ex - 1)*(m.zb ? m.zb[k] : z))); }
 // Export KML : zones de panneaux de la variante affichée, à ouvrir dans Google Earth
 function siteKml(){
   const vi = A3.v, V = ['V1','V2','V3'][vi], kc = {ru:'ffd6782a', rue:'ff7aaf1b', off:'ffc0c7c9'};
@@ -1314,12 +1351,17 @@ function drawSite(){
   const vi = A3.v, now = a3Now(), sun = sunPos(now.i), light = Math.max(0, Math.min(1, now.shape));
   const tr = [], M = (o, m) => tr.push(Object.assign({type:'mesh3d', flatshading:true, hoverinfo:'skip', lighting:{ambient:0.62, diffuse:0.75, specular:0.15, roughness:0.8}, lightposition:{x:-1000, y:-2000, z:3000}}, o, m));
   // environnement : terrain, routes, parking, voie ferrée, voisins
+  let geoView = null;
   if (A3.geo !== false && GEO.st === 'idle') geoLoad();
   const geoOn = A3.geo !== false && GEO.st === 'ok';
   if (geoOn){
     const d = GEO.d, ph = {flatshading:false, lighting:{ambient:0.92, diffuse:0.18, specular:0, roughness:1}};
-    M(Object.assign({vertexcolor:d.G.c}, ph), {x:d.G.x, y:d.G.y, z:d.G.z, i:d.G.i, j:d.G.j, k:d.G.k});
-    if (d.nb.x.length) M({vertexcolor:d.nb.c, hoverinfo:'text', text:new Array(d.nb.x.length).fill('Bâtiment voisin (emprise swisstopo, hauteur estimée)'), lighting:{ambient:0.7, diffuse:0.6, specular:0.05, roughness:0.9}}, {x:d.nb.x, y:d.nb.y, z:d.nb.z, i:d.nb.i, j:d.nb.j, k:d.nb.k});
+    if (GEO.size !== 'site' && !GEO.o[GEO.size]) geoLoadOuter(GEO.size);
+    const ou = GEO.size !== 'site' && GEO.o[GEO.size] && GEO.o[GEO.size].st === 'ok' ? GEO.o[GEO.size] : null;
+    if (ou) M(Object.assign({vertexcolor:ou.G.c}, ph), {x:ou.G.x, y:ou.G.y, z:geoEx(ou.G), i:ou.G.i, j:ou.G.j, k:ou.G.k});
+    M(Object.assign({vertexcolor:d.G.c}, ph), {x:d.G.x, y:d.G.y, z:geoEx(d.G), i:d.G.i, j:d.G.j, k:d.G.k});
+    if (d.nb.x.length) M({vertexcolor:d.nb.c, hoverinfo:'text', text:new Array(d.nb.x.length).fill('Bâtiment voisin (emprise swisstopo, hauteur estimée)'), lighting:{ambient:0.7, diffuse:0.6, specular:0.05, roughness:0.9}}, {x:d.nb.x, y:d.nb.y, z:geoEx(d.nb), i:d.nb.i, j:d.nb.j, k:d.nb.k});
+    geoView = ou ? {X:ou.X, Y:ou.Y, z0:Math.min(-20, ou.zmin*GEO.ex - 5), z1:Math.max(160, ou.zmax*GEO.ex + 10)} : {X:GEO.X, Y:GEO.Y, z0:-20, z1:160};
   } else {
     M({color:'#dfe6d6'}, box(-95,200,-110,280,-0.4,0));
     M({color:'#a9aaa3'}, box(-62,-48,-110,280,0,0.08)); M({color:'#c8c6bd'}, box(-48,-44,-110,280,0,0.06));
@@ -1352,7 +1394,7 @@ function drawSite(){
   });
   // soleil (direction réelle) et nord
   const toLocal = (az) => [Math.cos((az - GEO.az - 90)*Math.PI/180), Math.cos((az - GEO.az)*Math.PI/180)];
-  const cx = 55, cy = 80, R = 150;
+  const cx = 55, cy = 80, R = geoView ? Math.max(150, 0.3*(geoView.X[1]-geoView.X[0])) : 150;
   if (sun.el > 0){
     const [dx, dy] = toLocal(sun.az), ce = Math.cos(sun.el*Math.PI/180), sz = Math.sin(sun.el*Math.PI/180);
     const sx = cx + R*ce*dx, sy = cy + R*ce*dy, szz = R*sz;
@@ -1361,9 +1403,10 @@ function drawSite(){
   }
   const [nx, ny] = toLocal(0);
   tr.push({type:'scatter3d', mode:'lines+text', x:[-50, -50 + 30*nx], y:[215, 215 + 30*ny], z:[1, 1], text:['', 'N'], textposition:'top center', textfont:{size:16, color:'#b3261e'}, line:{color:'#b3261e', width:6}, hoverinfo:'skip'});
-  const sc = geoOn ? {xaxis:{visible:false, range:GEO.X}, yaxis:{visible:false, range:GEO.Y}, zaxis:{visible:false, range:[-20, 160]}, aspectmode:'manual', aspectratio:{x:1.27, y:1.5, z:0.47}, camera:{eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
+  const gv = geoView, gsx = gv ? gv.X[1]-gv.X[0] : 1, gsy = gv ? gv.Y[1]-gv.Y[0] : 1, gk = gv ? 1.5/Math.max(gsx, gsy) : 1, big = gv && gsx > 1000;
+  const sc = geoOn ? {xaxis:{visible:false, range:gv.X}, yaxis:{visible:false, range:gv.Y}, zaxis:{visible:false, range:[gv.z0, gv.z1]}, aspectmode:'manual', aspectratio:{x:gsx*gk, y:gsy*gk, z:Math.max(0.12, (gv.z1-gv.z0)*gk)}, camera:big ? {eye:{x:-0.75, y:-0.95, z:0.65}, center:{x:0, y:0, z:-0.1}} : {eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
     : {xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'};
-  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo' : 'site', paper_bgcolor:'#fff', scene:sc},
+  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo-' + (gv && gsx > 600 ? GEO.size : 'site') : 'site', paper_bgcolor:'#fff', scene:sc},
     {responsive:true, displaylogo:false, scrollZoom:false});
   const el = document.getElementById('a3Site');
   if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
@@ -1371,7 +1414,10 @@ function drawSite(){
   const inf = document.getElementById('a3SiteInfo');
   if (!inf._geo){ inf._geo = true; inf.addEventListener('click', ev => {
     if (ev.target.id === 'a3Geo'){ A3.geo = A3.geo === false; if (A3.geo && GEO.st === 'err'){ GEO.st = 'idle'; } drawSite(); }
-    if (ev.target.id === 'a3Kml') siteKml(); }); }
+    if (ev.target.id === 'a3Kml') siteKml();
+    const sz = ev.target.dataset && ev.target.dataset.size, ex = ev.target.dataset && ev.target.dataset.ex;
+    if (sz){ GEO.size = sz; if (GEO.o[sz] && GEO.o[sz].st === 'err') delete GEO.o[sz]; drawSite(); }
+    if (ex){ GEO.ex = +ex; drawSite(); } }); }
   // panneau d'information
   const r = now.r, v = r.v, tot = v.prodAc + v.prodRue;
   let zi = '<p class="cap">Cliquez sur une zone de panneaux pour voir son détail.</p>';
@@ -1380,7 +1426,7 @@ function drawSite(){
     const pz = role === 'ru' ? now.P*share : role === 'rue' ? now.Prue*share : 0;
     zi = `<div class="zinfo" style="border-left:4px solid ${ROLE[role].c}"><b>${z.id}</b> · ${ROLE[role].t}<br>${role === 'off' ? 'Zone sans panneaux dans cette variante.' : `${fN(vi === 2 && z.note3 ? 1440 : z.mod)} modules · ${fN(vi === 2 && z.note3 ? 2939.3 : z.m2,1)} m² · <b>${fN(z.kwc[vi],1)} kWc</b> · ${z.ori}<br>Production à cet instant : <b>${fN(pz)} kW</b> (≈ ${fN(share*100,1)} % de la partie ${role === 'ru' ? 'autoconsommation' : 'injection totale'})`}</div>`;
   }
-  document.getElementById('a3SiteInfo').innerHTML = `<div class="reallinks"><button class="btn sm" id="a3Geo">${A3.geo === false ? 'Afficher la photo aérienne et le relief' : 'Afficher le fond schématique'}</button><button class="btn sm" id="a3Kml">Télécharger les panneaux pour Google Earth (.kml)</button><a class="btn sm" target="_blank" rel="noopener" href="https://map.geo.admin.ch/#/map?lang=fr&3d&swisssearch=Chemin%20du%20Devin%203%201510%20Moudon">Voir le site réel en 3D (swisstopo)</a><a class="btn sm" target="_blank" rel="noopener" href="https://earth.google.com/web/search/Chemin+du+Devin+3,+1510+Moudon,+Suisse">Ouvrir dans Google Earth</a></div>${GEO.msg && A3.geo !== false ? `<p class="cap">${GEO.msg}</p>` : ''}${geoOn ? `<p class="cap">Fond : photo aérienne SWISSIMAGE et relief swissALTI3D (© swisstopo), ${GEO.d.nN} bâtiments voisins (emprises VECTOR25, hauteurs estimées). Zones de panneaux reportées depuis les photomontages.</p>` : ''}<div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
+  document.getElementById('a3SiteInfo').innerHTML = `<div class="reallinks"><button class="btn sm" id="a3Geo">${A3.geo === false ? 'Afficher la photo aérienne et le relief' : 'Afficher le fond schématique'}</button>${geoOn ? `<span class="seg" id="a3Size">${Object.entries(GEO_SIZES).map(([k, o]) => `<button class="${GEO.size === k ? 'on' : ''}" data-size="${k}">${o.t}</button>`).join('')}</span><span class="seg" id="a3Ex">${[1, 2, 3].map(e => `<button class="${GEO.ex === e ? 'on' : ''}" data-ex="${e}">Relief ×${e}</button>`).join('')}</span>` : ''}<button class="btn sm" id="a3Kml">Télécharger les panneaux pour Google Earth (.kml)</button><a class="btn sm" target="_blank" rel="noopener" href="https://map.geo.admin.ch/#/map?lang=fr&3d&swisssearch=Chemin%20du%20Devin%203%201510%20Moudon">Voir le site réel en 3D (swisstopo)</a><a class="btn sm" target="_blank" rel="noopener" href="https://earth.google.com/web/search/Chemin+du+Devin+3,+1510+Moudon,+Suisse">Ouvrir dans Google Earth</a></div>${GEO.msg && A3.geo !== false ? `<p class="cap">${GEO.msg}</p>` : ''}${geoOn ? `<p class="cap">Fond : photo aérienne SWISSIMAGE et relief swissALTI3D (© swisstopo), ${GEO.d.nN} bâtiments voisins en volume dans les 500 m autour de l'usine (emprises VECTOR25, hauteurs estimées)${GEO.size !== 'site' ? ' ; au-delà, relief et photo seulement' : ''}${GEO.ex > 1 ? ` ; relief exagéré ×${GEO.ex} pour la lecture (bâtiments à l'échelle réelle)` : ''}. Zones de panneaux reportées depuis les photomontages.</p>` : ''}<div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
       <div class="kpi"><b>${fN(now.P + now.Prue)} kW</b><span>Production totale${v.rueKwc > 0 ? ` (dont RUE ${fN(now.Prue)} kW)` : ''}</span></div>
       <div class="kpi"><b>${fN(now.L)} kW</b><span>Consommation de l'usine</span></div>
       <div class="kpi"><b>${sun.el > 0 ? fN(sun.el,0)+'°' : 'nuit'}</b><span>Hauteur du soleil${sun.el > 0 ? ` · azimut ${fN(sun.az,0)}°` : ''}</span></div>
