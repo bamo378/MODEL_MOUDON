@@ -1079,6 +1079,7 @@ function a3Tabs(){
   mk('a3Var', V.map((v,i)=>[i, v.name.split(' · ')[0]]), A3.v, k => { A3.v = +k; renderA3(); });
   mk('a3Q', Object.entries(A3Q).map(([k,o])=>[k, o.t.split(' (')[0]]), A3.q, k => { A3.q = k; renderA3(); });
   mk('a3Top', [[0,'Relief 3D'],[1,'Vue de dessus']], A3.top?1:0, k => { A3.top = k === '1'; renderA3(); });
+  mk('a3Roll', [[1,'Défilement : jours passés masqués'],[0,'Toute l\'année']], A3.roll !== false ? 1 : 0, k => { A3.roll = k === '1'; renderA3(); });
   mk('a3Var2', V.map((v,i)=>[i, v.name]), A3.v, k => { A3.v = +k; A3.zone = null; renderA3(); });
 }
 function renderA3(){
@@ -1106,24 +1107,42 @@ function drawCarpet(){
     }
   }
   if (!ck) A3._cz = {r, q, Z, TH, days, ticks, tickt};
-  const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`, cd = hrs.map(() => days);
-  const traces = A3.top
-    ? [{type:'heatmap', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}]
-    : [{type:'surface', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}, lighting:{ambient:0.8, diffuse:0.5, specular:0.05}}];
-  if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:days.map((_,d)=>d), y:hrs, z:TH, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip'});
+  const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`;
   const ds = Math.max(0, Math.min(nd - 1, Math.round((Date.parse(A3.day + 'T00:00:00Z') - S.t0)/86400000))), zs = hrs.map(h => Z[h][ds]);
-  let zmax = 0; Z.forEach(row => row.forEach(x => { if (x > zmax) zmax = x; }));
+  const cz = A3._cz; if (cz.zmax === undefined){ let m = 0; Z.forEach(row => row.forEach(x => { if (x > m) m = x; })); TH.forEach(row => row.forEach(x => { if (x !== null && x > m) m = x; })); cz.zmax = m || 1; }
+  const zmax = cz.zmax;
+  // « défilement » : les jours déjà passés disparaissent, le jour choisi devient la face avant
+  const d0 = A3.roll !== false ? Math.min(ds, nd - 2) : 0, xs = days.map((_, d) => d).slice(d0), cut = a => a.map(row => row.slice(d0)), cd = hrs.map(() => days.slice(d0));
+  const traces = A3.top
+    ? [{type:'heatmap', x:xs, y:hrs, z:cut(Z), customdata:cd, colorscale:a3scale, zmin:0, zmax, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}]
+    : [{type:'surface', x:xs, y:hrs, z:cut(Z), customdata:cd, colorscale:a3scale, cmin:0, cmax:zmax, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}, lighting:{ambient:0.8, diffuse:0.5, specular:0.05}}];
+  if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:xs, y:hrs, z:cut(TH), customdata:cd, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip'});
+  const nData = traces.length;
   const dLbl = new Date(S.t0 + ds*86400000).toLocaleDateString('fr-CH', {weekday:'short', day:'numeric', month:'short', timeZone:'UTC'});
   if (!A3.top){
     traces.push({type:'mesh3d', x:[ds,ds,ds,ds], y:[0,23,23,0], z:[0,0,zmax*1.05,zmax*1.05], i:[0,0], j:[1,2], k:[2,3], color:'#eda100', opacity:0.18, hoverinfo:'skip', showscale:false});
     traces.push({type:'scatter3d', mode:'lines+text', x:hrs.map(() => ds).concat([ds]), y:hrs.concat([23]), z:zs.map(z => z + zmax*0.012).concat([zmax*1.1]), text:hrs.map(() => '').concat([dLbl]), textposition:'top center', textfont:{size:15, color:'#b26b00'}, line:{color:hrs.map(() => '#1b1a17').concat(['rgba(0,0,0,0)']), width:7}, hoverinfo:'skip'});
   }
+  const cel = document.getElementById('a3Carpet'), ckey = [A3.v, q, A3.top, A3.roll !== false, a3H('a3Carpet', 1), RES.length, traces.length].join('|');
+  if (cel._ckey === ckey && cel._cr === r && cel.data && cel.data.length === traces.length){
+    const idx = traces.map((_, k) => k), D = traces.slice(0, nData);
+    if (cel._cd0 !== d0) Plotly.restyle(cel, {x:D.map(t => t.x), z:D.map(t => t.z), customdata:D.map(t => t.customdata)}, idx.slice(0, nData));
+    cel._cd0 = d0;
+    if (A3.top) Plotly.relayout(cel, {'shapes[0].x0':ds, 'shapes[0].x1':ds, 'annotations[0].x':ds, 'annotations[0].text':dLbl});
+    else { const ln = traces[nData+1], pl = traces[nData];
+      Plotly.restyle(cel, {x:[pl.x, ln.x], y:[pl.y, ln.y], z:[pl.z, ln.z], text:[null, ln.text]}, [nData, nData+1]); }
+    carpetTxt(); return;
+  }
+  cel._cd0 = d0;
+  cel._ckey = ckey; cel._cr = r;
   const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt}, ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
   Plotly.react('a3Carpet', traces, A3.top
-    ? {margin:{l:60,r:20,t:10,b:50}, height:a3H('a3Carpet', 430), font:a3font, showlegend:false, xaxis:xa, yaxis:ya, uirevision:'carpet',
+    ? {margin:{l:60,r:20,t:10,b:50}, height:a3H('a3Carpet', 430), font:a3font, showlegend:false, xaxis:Object.assign({range:[-0.5, nd - 0.5]}, xa), yaxis:ya, uirevision:'carpet',
         shapes:[{type:'line', x0:ds, x1:ds, y0:-0.5, y1:23.5, line:{color:'#1b1a17', width:2}}], annotations:[{x:ds, y:23.5, yanchor:'bottom', text:dLbl, showarrow:false, font:{color:'#b26b00', size:12}}]}
-    : {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Carpet', 560), font:a3font, showlegend:false, uirevision:'carpet', scene:{xaxis:xa, yaxis:ya, zaxis:{title:{text:o.u}}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
+    : {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Carpet', 560), font:a3font, showlegend:false, uirevision:'carpet', scene:{xaxis:Object.assign({range:[0, nd - 1], autorange:false}, xa), yaxis:Object.assign({range:[0, 23], autorange:false}, ya), zaxis:{title:{text:o.u}, range:[0, zmax*1.18], autorange:false}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
     {responsive:true, displaylogo:false, scrollZoom:false});
+  carpetTxt();
+  function carpetTxt(){
   const T = {load:'Les crêtes du matin en hiver et les journées de semaine ressortent ; le week-end forme des creux réguliers.',
     pv:'La production monte en été et en milieu de journée ; les journées grises font des creux.',
     grid:`Chaque pic est soutiré au réseau. ${r.hasBat && r.mode===0 ? 'La nappe rouge transparente est le seuil de pointe du mois : tout ce qui la dépasse est facturé comme pointe. ' : ''}Le solaire creuse la mi-journée, surtout en été.`,
@@ -1131,14 +1150,15 @@ function drawCarpet(){
     cut:'Chaque pic montre un moment où la batterie coupe une pointe : surtout tôt le matin et le soir, et davantage en hiver.',
     soc:'Bleu foncé = batterie pleine, clair = vide. On voit les jours d\'hiver où elle se vide sur les pointes et met du temps à se recharger au soleil.'};
   const dayV = zs.reduce((a, b) => a + b, 0), dayM = Math.max(...zs);
-  document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> (trait noir) · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette de la souris sur le graphique : jour suivant / précédent (Maj + molette : semaine). Clic sur le relief : choisir ce jour.</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+  document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> (trait noir) · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette de la souris sur le graphique : jour suivant / précédent (Maj + molette : semaine) ; en mode défilement, les jours passés disparaissent et réapparaissent quand on recule. Clic sur le relief : choisir ce jour.</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+  }
   const el = document.getElementById('a3Carpet');
   if (!el._wheel){ el._wheel = true; let acc = 0, raf = 0, slow = 0;
     el.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation(); acc += (e.deltaMode === 1 ? 40 : 1)*(e.deltaY || e.deltaX);
       let n = Math.trunc(acc/80); if (!n) return; acc -= n*80; n = Math.max(-10, Math.min(10, n));
       a3Day(n*(e.shiftKey ? 7 : 1));
-      cancelAnimationFrame(raf); raf = requestAnimationFrame(drawCarpet);
-      clearTimeout(slow); slow = setTimeout(() => { drawFlow(); drawSite(); }, 250); }, {passive:false, capture:true});
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { drawCarpet(); drawFlow(); });
+      clearTimeout(slow); slow = setTimeout(drawSite, 180); }, {passive:false, capture:true});
     el.on('plotly_click', ev => { const pt = ev.points && ev.points[0]; if (!pt || typeof pt.x !== 'number') return;
       const d = new Date(YEAR.t0 + Math.round(pt.x)*86400000).toISOString().slice(0,10); A3.day = d; document.getElementById('a3Day').value = d; drawCarpet(); drawFlow(); drawSite(); }); }
 }
@@ -1416,20 +1436,27 @@ function drawSite(){
   const toLocal = (az) => [Math.cos((az - GEO.az - 90)*Math.PI/180), Math.cos((az - GEO.az)*Math.PI/180)];
   const cx = 55, cy = 80, R = geoView ? Math.max(150, 0.12*(geoView.X[1]-geoView.X[0])) : 150;
   if (geoView) geoView.z1 = Math.max(geoView.z1, R + 20);
-  if (sun.el > 0){
-    const [dx, dy] = toLocal(sun.az), ce = Math.cos(sun.el*Math.PI/180), sz = Math.sin(sun.el*Math.PI/180);
+  const sunIdx = tr.length, up = sun.el > 0;
+  {
+    const [dx, dy] = toLocal(sun.az), ce = Math.cos(Math.max(sun.el, 0)*Math.PI/180), sz = Math.sin(Math.max(sun.el, 0)*Math.PI/180);
     const sx = cx + R*ce*dx, sy = cy + R*ce*dy, szz = R*sz;
-    tr.push({type:'scatter3d', mode:'lines', x:[sx, cx], y:[sy, cy], z:[szz, 10], line:{color:'#eda100', width:3, dash:'dash'}, hoverinfo:'skip'});
-    tr.push({type:'scatter3d', mode:'markers+text', x:[sx], y:[sy], z:[szz], text:['Soleil'], textposition:'top center', marker:{size:14, color:'#ffcf33', line:{color:'#e09a00', width:2}}, hoverinfo:'text', hovertext:[`Soleil : hauteur ${fN(sun.el,0)}°, azimut ${fN(sun.az,0)}°`]});
+    tr.push({type:'scatter3d', mode:'lines', visible:up, x:[sx, cx], y:[sy, cy], z:[szz, 10], line:{color:'#eda100', width:3, dash:'dash'}, hoverinfo:'skip'});
+    tr.push({type:'scatter3d', mode:'markers+text', visible:up, x:[sx], y:[sy], z:[szz], text:['Soleil'], textposition:'top center', marker:{size:14, color:'#ffcf33', line:{color:'#e09a00', width:2}}, hoverinfo:'text', hovertext:[`Soleil : hauteur ${fN(sun.el,0)}°, azimut ${fN(sun.az,0)}°`]});
   }
   const [nx, ny] = toLocal(0);
   tr.push({type:'scatter3d', mode:'lines+text', x:[-50, -50 + 30*nx], y:[215, 215 + 30*ny], z:[1, 1], text:['', 'N'], textposition:'top center', textfont:{size:16, color:'#b3261e'}, line:{color:'#b3261e', width:6}, hoverinfo:'skip'});
   const gv = geoView, gsx = gv ? gv.X[1]-gv.X[0] : 1, gsy = gv ? gv.Y[1]-gv.Y[0] : 1, gk = gv ? 1.5/Math.max(gsx, gsy) : 1, big = gv && gsx > 1000;
   const sc = geoOn ? {xaxis:{visible:false, range:gv.X}, yaxis:{visible:false, range:gv.Y}, zaxis:{visible:false, range:[gv.z0, gv.z1]}, aspectmode:'manual', aspectratio:{x:gsx*gk, y:gsy*gk, z:Math.max(0.12, (gv.z1-gv.z0)*gk)}, camera:big ? {eye:{x:-0.75, y:-0.95, z:0.65}, center:{x:0, y:0, z:-0.1}} : {eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
     : {xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'};
+  const sel3 = document.getElementById('a3Site'), skey = [geoOn, GEO.size, GEO.ex, vi, A3.zone, a3H('a3Site', 1), GEO.st, GEO.o[GEO.size] && GEO.o[GEO.size].st, tr.length].join('|');
+  if (sel3._skey === skey && sel3.data && sel3.data.length === tr.length){
+    // seuls les panneaux (couleur selon la production) et le soleil changent : mise à jour légère
+    Plotly.restyle(sel3, {color:zoneIdx.map(k => tr[k].color)}, zoneIdx);
+    Plotly.restyle(sel3, {x:[tr[sunIdx].x, tr[sunIdx+1].x], y:[tr[sunIdx].y, tr[sunIdx+1].y], z:[tr[sunIdx].z, tr[sunIdx+1].z], visible:[up, up], hovertext:[null, tr[sunIdx+1].hovertext]}, [sunIdx, sunIdx+1]);
+  } else { sel3._skey = skey;
   Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Site', 560), font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo-' + (gv && gsx > 600 ? GEO.size : 'site') : 'site', paper_bgcolor:'#fff', scene:sc},
-    {responsive:true, displaylogo:false, scrollZoom:false});
-  const el = document.getElementById('a3Site');
+    {responsive:true, displaylogo:false, scrollZoom:false}); }
+  const el = sel3;
   if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
   el._zoneIdx = zoneIdx;
   const inf = document.getElementById('a3SiteInfo');
