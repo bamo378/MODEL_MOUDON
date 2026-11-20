@@ -266,7 +266,7 @@ const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.pa
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP(); renderA3(); renderMC();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP(); renderA3(); renderMC(); renderRev();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -967,7 +967,8 @@ function renderOP(force){
       G.rueOn = OP.rue; G.gridChg = OP.grid;
       let r; try { r = compute(v); } finally { G.rueOn = keepG.rueOn; G.gridChg = keepG.gridChg; }
       const cum = r.rows[H-1].cum;
-      cells.push({ru, rue, bat, kw: v.batKw, price: r.price, cum, npv: r.npv, roi: cum/Math.max(1, r.price - r.sub), y1: r.year1, sub: r.sub, pay: r.payback, taux: r.tauxAc, T: r.hasBat && r.mode === 0 ? r.T : null, Ts: r.hasBat && r.mode === 0 ? r.Ts : null});
+      cells.push({ru, rue, bat, kw: v.batKw, price: r.price, cum, npv: r.npv, roi: cum/Math.max(1, r.price - r.sub), y1: r.year1, sub: r.sub, pay: r.payback, taux: r.tauxAc, T: r.hasBat && r.mode === 0 ? r.T : null, Ts: r.hasBat && r.mode === 0 ? r.Ts : null,
+        fl:{price:r.price, dep:r.dep, sub:r.sub, sEnergy:r.sEnergy, sQ:r.sQ, sExp:r.sExp, sRue:r.sRue, sPeak:r.sPeak, mode:r.mode, peakPv:r.peakPv, peakMonths:r.peakMonths}});
     }
     const pc = n/jobs.length, el = (performance.now() - t0all)/1000;
     st.textContent = n < jobs.length ? `Calcul ${Math.round(pc*100)} % · ${n} / ${jobs.length} configurations · encore ~${Math.max(1, Math.round(el/pc - el))} s` : `${jobs.length} configurations calculées en ${Math.round(el)} s · scénario ${scen().t}`;
@@ -976,7 +977,7 @@ function renderOP(force){
     if (n < jobs.length){ setTimeout(step, 0); return; }
     opData = {key, cells, RU, BAT, H}; opRunKey = null;
     if (opSetResult()){ renderCards(); renderComp(); }
-    if (document.getElementById('tab-opt').classList.contains('active')) loadPlotly(drawOP);
+    if (document.getElementById('tab-opt').classList.contains('active')){ loadPlotly(drawOP); renderRev(); }
   };
   document.getElementById('opBar').style.width = '0%';
   st.textContent = 'Calcul…'; setTimeout(step, 30);
@@ -1929,6 +1930,79 @@ function renderMC(){
       scales:{x:{title:{display:true, text:`liquidités cumulées à ${H} ans (mio CHF)`}, grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10}}, y:{title:{display:true, text:'% des scénarios'}, grid:{color:'#ecebe6'}}}}});
   document.getElementById('mcFanT').textContent = `Liquidités cumulées de ${sel.name} année après année`;
   document.getElementById('mcTorT').textContent = `Ce qui pèse le plus sur ${sel.name}`;
+}
+/* ---------------- Sensibilité au prix de reprise (onglet Version optimale) ---------------- */
+const RV = {min:3, max:15, step:1, sel:0};
+try { const s = JSON.parse(localStorage.getItem('moudon_rv')); if (s) Object.assign(RV, s); } catch (e) {}
+function rvFlows(r, p){ const H = Math.max(1, Math.round(G.horizon)), f = mcOnes(H); f.rr = new Array(H).fill(G.rev > 0 ? p/G.rev : 1); return mcFlows(r, f, H); }
+function renderRev(){
+  const box = document.getElementById('rvBox'); if (!box || !document.getElementById('tab-opt').classList.contains('active')) return;
+  const H = Math.max(1, Math.round(G.horizon)), list = CMP(), cols = CMPC(), names = list.map(r => r.v.name.split(' · ')[0]);
+  if (!box.dataset.ok){ box.dataset.ok = 1;
+    ['min','max','step'].forEach(k => { const i = document.getElementById('rv_' + k); i.value = RV[k]; i.onchange = () => { RV[k] = Math.max(0, +i.value || 0); if (RV.max <= RV.min) RV.max = RV.min + 1; if (RV.step <= 0) RV.step = 0.5; try { localStorage.setItem('moudon_rv', JSON.stringify(RV)); } catch (e) {} renderRev(); }; }); }
+  // prix testés (ct/kWh), avec le prix actuel des paramètres
+  const cur = Math.round(G.rev*10000)/100, P = []; for (let p = RV.min; p <= RV.max + 1e-9 && P.length < 60; p += RV.step) P.push(Math.round(p*100)/100);
+  if (!P.some(p => Math.abs(p - cur) < 1e-6)) P.push(cur); P.sort((a, b) => a - b);
+  const lbl = P.map(p => fN(p, p % 1 ? 1 : 0) + (Math.abs(p - cur) < 1e-6 ? ' (actuel)' : ''));
+  const R = list.map(r => P.map(p => rvFlows(r, p/100)));
+  // optimum recalculé pour chaque prix à partir de la grille de la version optimale
+  const cells = opData && opData.cells && opData.cells[0] && opData.cells[0].fl ? opData.cells : null;
+  const OPT = cells ? P.map(p => { let best = null, bv = -Infinity; cells.forEach(c => { const o = rvFlows(c.fl, p/100), val = OP.crit === 'npv' ? o.npv : o.cum; if (val > bv){ bv = val; best = {c, o}; } }); return best; }) : null;
+  // 1) liquidités à l'horizon
+  const ds1 = list.map((r, i) => ({label:names[i], data:R[i].map(o => o.cum), borderColor:cols[i], backgroundColor:cols[i], pointRadius:P.map(p => Math.abs(p - cur) < 1e-6 ? 5 : 2), borderWidth:2.2, tension:0.15}));
+  if (OPT) ds1.push({label:'Meilleure config. recalculée à chaque prix', data:OPT.map(b => b.o.cum), borderColor:'#7a5a00', borderDash:[6,4], pointRadius:2, borderWidth:2, tension:0.15});
+  const opts = (yt, fmt) => ({maintainAspectRatio:false, interaction:{mode:'index', intersect:false}, plugins:{tooltip:{callbacks:{title:c => `Reprise ${c[0].label} ct/kWh`, label:c => `${c.dataset.label} : ${fmt(c.parsed.y)}`}}},
+    scales:{x:{title:{display:true, text:'prix de reprise (ct/kWh)'}, grid:{display:false}}, y:Object.assign({title:{display:true, text:yt}}, gridY)}});
+  chart('rvCum', {type:'line', data:{labels:lbl, datasets:ds1}, options:opts(`liquidités cumulées à ${H} ans (CHF)`, v => fCHF(v) + ' CHF')});
+  // 2) durée de remboursement
+  chart('rvPay', {type:'line', data:{labels:lbl, datasets:list.map((r, i) => ({label:names[i], data:R[i].map(o => o.pay), borderColor:cols[i], backgroundColor:cols[i], pointRadius:2, borderWidth:2.2, tension:0.15, spanGaps:false}))
+      .concat(OPT ? [{label:'Meilleure config. recalculée', data:OPT.map(b => b.o.pay), borderColor:'#7a5a00', borderDash:[6,4], pointRadius:2, borderWidth:2}] : [])},
+    options:Object.assign(opts('entièrement payé après (années)', v => fN(v, 1) + ' ans'), {})});
+  // 3) flux cumulés année par année pour la variante choisie
+  const seg = document.getElementById('rvVar'); RV.sel = Math.min(RV.sel, list.length - 1);
+  seg.innerHTML = names.map((n, i) => `<button data-k="${i}" class="${i === RV.sel ? 'on' : ''}">${n}</button>`).join('');
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => { RV.sel = +b.dataset.k; renderRev(); });
+  const pick = [...new Set([0, Math.round((P.length - 1)/4), P.findIndex(p => Math.abs(p - cur) < 1e-6), Math.round(3*(P.length - 1)/4), P.length - 1])].sort((a, b) => a - b);
+  const sv = R[RV.sel], yrs = Array.from({length:H + 1}, (_, y) => y);
+  chart('rvFlow', {type:'line', data:{labels:yrs, datasets:pick.map((k, j) => { const c = mixC('#cfe0f1', '#132a40', pick.length > 1 ? j/(pick.length - 1) : 1);
+      return {label:`${fN(P[k], P[k] % 1 ? 1 : 0)} ct/kWh${Math.abs(P[k] - cur) < 1e-6 ? ' (actuel)' : ''}`, data:sv[k].cumY, borderColor:Math.abs(P[k] - cur) < 1e-6 ? '#eb6834' : c, borderWidth:Math.abs(P[k] - cur) < 1e-6 ? 2.6 : 2, pointRadius:0, tension:0.1}; })},
+    options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false}, plugins:{tooltip:{callbacks:{title:c => `Année ${c[0].label}`, label:c => `${c.dataset.label} : ${fCHF(c.parsed.y)} CHF`}}},
+      scales:{x:{title:{display:true, text:'années'}, grid:{display:false}}, y:Object.assign({title:{display:true, text:'liquidités cumulées (CHF)'}}, gridY)}}});
+  document.getElementById('rvFlowT').textContent = `Liquidités année après année de ${names[RV.sel]} selon le prix de reprise`;
+  // 4) recettes de la 1re année décomposées
+  const rs = list[RV.sel], pk = (rs.sPeak);
+  chart('rvRec', {type:'bar', data:{labels:lbl, datasets:[
+      {label:'Économies d\'achat (autoconsommation)', data:P.map(() => rs.sEnergy + rs.sQ), backgroundColor:'#2a78d6'},
+      {label:'Pointes évitées', data:P.map(() => pk), backgroundColor:'#7fa9d8'},
+      {label:'Surplus revendu', data:P.map(p => rs.sExp*(G.rev > 0 ? p/100/G.rev : 1)), backgroundColor:'#1baf7a'},
+      {label:'Installation RUE (injection totale)', data:P.map(p => rs.sRue*(G.rev > 0 ? p/100/G.rev : 1)), backgroundColor:'#86d1b2'}]},
+    options:{maintainAspectRatio:false, plugins:{tooltip:{callbacks:{title:c => `Reprise ${c[0].label} ct/kWh`, label:c => `${c.dataset.label} : ${fCHF(c.parsed.y)} CHF`}}},
+      scales:{x:{stacked:true, title:{display:true, text:'prix de reprise (ct/kWh)'}, grid:{display:false}}, y:Object.assign({stacked:true, title:{display:true, text:'recettes de la 1re année (CHF)'}}, gridY)}}});
+  document.getElementById('rvRecT').textContent = `D'où viennent les recettes de ${names[RV.sel]} (1re année)`;
+  // 5) configuration optimale selon le prix
+  const ob = document.getElementById('rvOptBox');
+  if (OPT){ ob.style.display = '';
+    chart('rvOpt', {type:'bar', data:{labels:lbl, datasets:[
+        {label:'kWc autoconsommation (RU)', data:OPT.map(b => b.c.ru), backgroundColor:'#2a78d6', stack:'pv', yAxisID:'y'},
+        {label:'kWc injection totale (RUE)', data:OPT.map(b => b.c.rue), backgroundColor:'#1baf7a', stack:'pv', yAxisID:'y'},
+        {type:'line', label:'Batterie (kWh)', data:OPT.map(b => b.c.bat), borderColor:'#c08a00', backgroundColor:'#c08a00', pointRadius:3, borderWidth:2, yAxisID:'y2'}]},
+      options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false}, plugins:{tooltip:{callbacks:{title:c => `Reprise ${c[0].label} ct/kWh`}}},
+        scales:{x:{stacked:true, title:{display:true, text:'prix de reprise (ct/kWh)'}, grid:{display:false}}, y:Object.assign({stacked:true, title:{display:true, text:'kWc'}}, gridY), y2:{position:'right', min:0, title:{display:true, text:'batterie (kWh)'}, grid:{display:false}}}}});
+  } else ob.style.display = 'none';
+  // tableau
+  const best = P.map((_, k) => R.reduce((a, rr, i) => rr[k].cum > R[a][k].cum ? i : a, 0));
+  document.getElementById('rvTab').innerHTML = `<tr><th>Reprise (ct/kWh)</th>${names.map((n, i) => `<th style="color:${cols[i]}">${n}<br><span class="cap">liquidités ${H} ans · payé après</span></th>`).join('')}${OPT ? '<th>Meilleure config. à ce prix</th>' : ''}</tr>` +
+    P.map((p, k) => `<tr${Math.abs(p - cur) < 1e-6 ? ' style="background:#fff7e6"' : ''}><td>${lbl[k]}</td>${R.map((rr, i) => `<td>${i === best[k] ? '<b>' : ''}${fCHF(rr[k].cum)}${i === best[k] ? '</b>' : ''} · ${rr[k].pay != null ? fN(rr[k].pay, 1) + ' ans' : '> ' + H + ' ans'}</td>`).join('')}${OPT ? `<td>${fN(OPT[k].c.ru)} RU + ${fN(OPT[k].c.rue)} RUE${OPT[k].c.bat ? ', bat. ' + fN(OPT[k].c.bat) + ' kWh' : ''} · ${fCHF(OPT[k].o.cum)}</td>` : ''}</tr>`).join('');
+  // texte : seuils où le classement change (recherche fine)
+  const fine = []; for (let p = RV.min; p <= RV.max + 1e-9; p += 0.05) fine.push(Math.round(p*100)/100);
+  const nv = RES.length, bf = fine.map(p => { const c = RES.map(r => rvFlows(r, p/100).cum); return c.reduce((a, x, i) => x > c[a] ? i : a, 0); });
+  const sw = []; for (let k = 1; k < fine.length; k++) if (bf[k] !== bf[k-1]) sw.push(`à partir d'environ <b>${fN(fine[k], 1)} ct/kWh</b>, <b>${names[bf[k]]}</b> passe devant ${names[bf[k-1]]}`);
+  const kc = P.findIndex(p => Math.abs(p - cur) < 1e-6), sens = list.map((r, i) => { const a = rvFlows(r, (cur + 1)/100).cum - R[i][kc].cum; return `${names[i]} ${a >= 0 ? '+' : ''}${fCHF(a)} CHF`; });
+  const bestV = R.slice(0, nv).reduce((a, rr, i) => rr[kc].cum > R[a][kc].cum ? i : a, 0);
+  document.getElementById('rvTxt').innerHTML = `Prix de reprise actuel des paramètres : <b>${fN(cur, 2)} ct/kWh</b>. Parmi V1, V2 et V3, <b>${names[bestV]}</b> donne le plus de liquidités à ${H} ans à ce prix. `
+    + (sw.length ? `Le classement change selon le prix : ${sw.join(' ; ')}. ` : `Entre ${fN(RV.min,1)} et ${fN(RV.max,1)} ct/kWh, <b>${names[bf[0]]}</b> reste la meilleure des trois. `)
+    + `Chaque centime de plus par kWh repris rapporte sur ${H} ans : ${sens.join(', ')}. Plus une variante injecte (RUE, surplus), plus elle dépend de ce prix.`
+    + (OPT ? '' : ' <span class="cap">La courbe « meilleure configuration recalculée » apparaît quand le calcul de la version optimale est terminé.</span>');
 }
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {

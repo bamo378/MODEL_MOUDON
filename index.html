@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120zc">
+<link rel="stylesheet" href="style.css?v=20261120ze">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120zc"></script>
-<script src="costs.js?v=20261120zc"></script>
+<script src="data.js?v=20261120ze"></script>
+<script src="costs.js?v=20261120ze"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -163,6 +163,21 @@
     <div class="box"><h3>Autour de l'optimum : répartition RU / RUE</h3><div id="opSplit"></div><p class="cap">Même puissance totale et même batterie, part RU variable.</p></div>
   </div>
   <div class="box"><h3>Les 10 meilleures configurations</h3><div class="tablewrap"><table id="opTop"></table></div></div>
+  <div class="box" id="rvBox"><h3>Et si le prix de reprise de l'électricité change ? <i class="tip" data-tip="Les flux de chaque variante sont recalculés pour chaque prix de reprise (CHF payés par kWh injecté), qui s'applique au surplus revendu et à toute l'installation RUE. Les économies d'achat et de pointe ne changent pas. La meilleure configuration recalculée parcourt toute la grille de la version optimale pour chaque prix.">i</i></h3>
+    <div class="row"><label class="inl">De <input type="number" id="rv_min" step="0.5" min="0" style="width:64px"> à <input type="number" id="rv_max" step="0.5" min="0" style="width:64px"> ct/kWh, par pas de <input type="number" id="rv_step" step="0.5" min="0.5" style="width:56px"> ct</label></div>
+    <p id="rvTxt" style="margin:0 0 12px"></p>
+    <div class="grid2">
+      <div><h3 style="font-size:13px">Liquidités à l'horizon selon le prix de reprise</h3><div style="height:300px"><canvas id="rvCum"></canvas></div></div>
+      <div><h3 style="font-size:13px">Durée pour être entièrement payé</h3><div style="height:300px"><canvas id="rvPay"></canvas></div></div>
+    </div>
+    <div class="row" style="justify-content:space-between;margin-top:14px"><span class="cap">Variante détaillée :</span><div class="seg" id="rvVar"></div></div>
+    <div class="grid2">
+      <div><h3 style="font-size:13px" id="rvFlowT"></h3><div style="height:300px"><canvas id="rvFlow"></canvas></div><p class="cap">Orange : prix actuel. Du clair au foncé : du prix le plus bas au plus haut.</p></div>
+      <div><h3 style="font-size:13px" id="rvRecT"></h3><div style="height:300px"><canvas id="rvRec"></canvas></div><p class="cap">Seules les parties vertes (énergie injectée) dépendent du prix de reprise.</p></div>
+    </div>
+    <div id="rvOptBox" style="margin-top:14px"><h3 style="font-size:13px">Meilleure configuration selon le prix de reprise</h3><div style="height:300px"><canvas id="rvOpt"></canvas></div><p class="cap">Quand la reprise paie bien, l'injection totale (RUE) devient plus intéressante ; quand elle paie mal, mieux vaut autoconsommer et stocker.</p></div>
+    <div class="tablewrap" style="margin-top:12px"><table id="rvTab"></table></div>
+  </div>
 </section>
 
 <!-- ANALYSE DE RISQUE -->
@@ -276,6 +291,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120zc"></script>
+<script src="app.js?v=20261120ze"></script>
 </body>
 </html>
