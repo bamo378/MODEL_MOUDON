@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model SA Moudon – Simulateur PV</title>
-<link rel="stylesheet" href="style.css?v=20261120u">
+<link rel="stylesheet" href="style.css?v=20261120v">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="data.js?v=20261120u"></script>
-<script src="costs.js?v=20261120u"></script>
+<script src="data.js?v=20261120v"></script>
+<script src="costs.js?v=20261120v"></script>
 </head>
 <body>
 <div class="vsw"><span>Version du site :</span><a href="v14h/">19.11 · 14h00</a><a class="on" href="./">Actuelle</a></div>
@@ -192,7 +192,7 @@
 
 <!-- ANALYSE 3D -->
 <section id="tab-a3" class="panel">
-  <div class="box"><h3>1 · L'année en relief <i class="tip" data-tip="Chaque point est une heure de l'année simulée (365 jours × 24 heures). Hauteur et couleur : la grandeur choisie. Cliquer-glisser pour tourner ; zoom avec les boutons du graphique.">i</i></h3>
+  <div class="box a3fsbox" id="a3Box1"><button class="btn sm fsbtn" data-fs="a3Box1">⛶ Plein écran</button><h3>1 · L'année en relief <i class="tip" data-tip="Chaque point est une heure de l'année simulée (365 jours × 24 heures). Hauteur et couleur : la grandeur choisie. Cliquer-glisser pour tourner ; zoom avec les boutons du graphique.">i</i></h3>
     <div class="row" style="gap:10px"><div class="seg" id="a3Var"></div><div class="seg" id="a3Q"></div><div class="seg" id="a3Top"></div></div>
     <div id="a3Carpet"></div><p class="cap" id="a3CarpetTxt"></p></div>
   <div class="box a3ctl">
@@ -204,12 +204,12 @@
       <b id="a3Time" style="margin-bottom:12px"></b></div>
     <p class="cap" style="margin:0">Le jour, l'heure et la variante choisis ici pilotent le site en 3D et le flux d'énergie ci-dessous.</p></div>
   <div class="grid2" style="grid-template-columns:3fr 2fr">
-    <div class="box"><h3>2 · Le site en 3D <i class="tip" data-tip="Site réel géoréférencé : emprise de l'usine, photo aérienne SWISSIMAGE, relief swissALTI3D et bâtiments voisins VECTOR25 (© swisstopo, chargés en direct). Zones, modules, m², kWc et orientations tirés des photomontages Soleol du 03.11.2026 ; position des zones sur le toit et hauteurs des bâtiments approximatives (±5 m). Bleu : autoconsommation (RU). Vert : injection totale (RUE). Gris : pas de panneaux dans la variante. Les panneaux s'éclairent avec la production ; le soleil suit sa vraie position à Moudon.">i</i></h3>
+    <div class="box a3fsbox" id="a3Box2"><button class="btn sm fsbtn" data-fs="a3Box2">⛶ Plein écran</button><h3>2 · Le site en 3D <i class="tip" data-tip="Site réel géoréférencé : emprise de l'usine, photo aérienne SWISSIMAGE, relief swissALTI3D et bâtiments voisins VECTOR25 (© swisstopo, chargés en direct). Zones, modules, m², kWc et orientations tirés des photomontages Soleol du 03.11.2026 ; position des zones sur le toit et hauteurs des bâtiments approximatives (±5 m). Bleu : autoconsommation (RU). Vert : injection totale (RUE). Gris : pas de panneaux dans la variante. Les panneaux s'éclairent avec la production ; le soleil suit sa vraie position à Moudon.">i</i></h3>
       <div id="a3Site"></div><p class="cap">Usine à sa vraie place (swisstopo), zones et puissances des photomontages ; hauteurs approximatives. Cliquer-glisser pour tourner, cliquer sur une zone pour son détail.</p></div>
     <div class="box"><h3>Ce qui se passe à cet instant</h3><div id="a3SiteInfo"></div>
       <div class="legend3"><span><i style="background:#2a78d6"></i>Autoconsommation (RU)</span><span><i style="background:#1baf7a"></i>Injection totale (RUE)</span><span><i style="background:#c9c7c0"></i>Sans panneaux</span><span><i style="background:#eda100"></i>Zone choisie</span></div></div>
   </div>
-  <div class="box"><h3>3 · Le flux d'énergie <i class="tip" data-tip="Épaisseur des flèches = puissance à ce quart d'heure. Les traits avancent plus vite quand le flux est fort. Rouge : la batterie coupe une pointe. Valeurs de la simulation au quart d'heure de la variante choisie.">i</i></h3>
+  <div class="box a3fsbox" id="a3Box3"><button class="btn sm fsbtn" data-fs="a3Box3">⛶ Plein écran</button><h3>3 · Le flux d'énergie <i class="tip" data-tip="Épaisseur des flèches = puissance à ce quart d'heure. Les traits avancent plus vite quand le flux est fort. Rouge : la batterie coupe une pointe. Valeurs de la simulation au quart d'heure de la variante choisie.">i</i></h3>
     <div id="a3Flow"></div><p class="cap" id="a3FlowTxt"></p></div>
 </section>
 
@@ -276,6 +276,6 @@
 <div id="tipbox"></div>
 <div id="lb" title="Cliquer pour fermer"><img alt=""><p></p></div>
 <div id="report"></div>
-<script src="app.js?v=20261120u"></script>
+<script src="app.js?v=20261120v"></script>
 </body>
 </html>

@@ -1092,10 +1092,11 @@ function renderA3(){
 // 1) Tapis de l'année : jours × heures × puissance
 function drawCarpet(){
   const r = RES[A3.v], S = YEAR, a = r.r, v = r.v, q = A3.q, nd = Math.floor(S.n/96);
-  const Z = Array.from({length:24}, () => new Array(nd).fill(0)), TH = Array.from({length:24}, () => new Array(nd).fill(null));
-  const days = [], ticks = [], tickt = [], MO = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const ck = A3._cz && A3._cz.r === r && A3._cz.q === q ? A3._cz : null;
+  const Z = ck ? ck.Z : Array.from({length:24}, () => new Array(nd).fill(0)), TH = ck ? ck.TH : Array.from({length:24}, () => new Array(nd).fill(null));
+  const days = ck ? ck.days : [], ticks = ck ? ck.ticks : [], tickt = ck ? ck.tickt : [], MO = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   const val = i => q === 'load' ? S.load[i] : q === 'pv' ? v.prodAc*S.pv[i] : q === 'grid' ? Math.max(a.grid[i], 0) : q === 'exp' ? Math.max(-a.grid[i], 0) : q === 'soc' ? a.soc[i] : (a.kind[i] === 3 ? a.dis15[i] : 0);
-  for (let d = 0; d < nd; d++){
+  if (!ck) for (let d = 0; d < nd; d++){
     const dt = new Date(S.t0 + d*86400000); days.push(dt.toISOString().slice(0,10));
     if (dt.getUTCDate() === 1){ ticks.push(d); tickt.push(MO[dt.getUTCMonth()] + ' ' + String(dt.getUTCFullYear()).slice(2)); }
     for (let h = 0; h < 24; h++){
@@ -1104,15 +1105,24 @@ function drawCarpet(){
       Z[h][d] = (q === 'grid' || q === 'cut') ? mx : s/4; TH[h][d] = t;
     }
   }
+  if (!ck) A3._cz = {r, q, Z, TH, days, ticks, tickt};
   const o = A3Q[q], hrs = Array.from({length:24}, (_,h) => h), hov = `%{customdata}<br>%{y}h : <b>%{z:,.0f} ${o.u}</b><extra></extra>`, cd = hrs.map(() => days);
   const traces = A3.top
     ? [{type:'heatmap', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}}]
     : [{type:'surface', x:days.map((_,d)=>d), y:hrs, z:Z, customdata:cd, colorscale:a3scale, hovertemplate:hov, colorbar:{title:{text:o.u}, thickness:12}, lighting:{ambient:0.8, diffuse:0.5, specular:0.05}}];
   if (q === 'grid' && !A3.top && r.hasBat && r.mode === 0) traces.push({type:'surface', x:days.map((_,d)=>d), y:hrs, z:TH, opacity:0.35, showscale:false, colorscale:[[0,'#b3261e'],[1,'#b3261e']], hoverinfo:'skip'});
+  const ds = Math.max(0, Math.min(nd - 1, Math.round((Date.parse(A3.day + 'T00:00:00Z') - S.t0)/86400000))), zs = hrs.map(h => Z[h][ds]);
+  let zmax = 0; Z.forEach(row => row.forEach(x => { if (x > zmax) zmax = x; }));
+  const dLbl = new Date(S.t0 + ds*86400000).toLocaleDateString('fr-CH', {weekday:'short', day:'numeric', month:'short', timeZone:'UTC'});
+  if (!A3.top){
+    traces.push({type:'mesh3d', x:[ds,ds,ds,ds], y:[0,23,23,0], z:[0,0,zmax*1.05,zmax*1.05], i:[0,0], j:[1,2], k:[2,3], color:'#eda100', opacity:0.18, hoverinfo:'skip', showscale:false});
+    traces.push({type:'scatter3d', mode:'lines+text', x:hrs.map(() => ds).concat([ds]), y:hrs.concat([23]), z:zs.map(z => z + zmax*0.012).concat([zmax*1.1]), text:hrs.map(() => '').concat([dLbl]), textposition:'top center', textfont:{size:15, color:'#b26b00'}, line:{color:hrs.map(() => '#1b1a17').concat(['rgba(0,0,0,0)']), width:7}, hoverinfo:'skip'});
+  }
   const xa = {title:{text:'Jour de l\'année (oct. 2025 → sept. 2026)'}, tickvals:ticks, ticktext:tickt}, ya = {title:{text:'Heure'}, tickvals:[0,6,12,18,23], ticktext:['0h','6h','12h','18h','23h']};
   Plotly.react('a3Carpet', traces, A3.top
-    ? {margin:{l:60,r:20,t:10,b:50}, height:430, font:a3font, xaxis:xa, yaxis:ya, uirevision:'carpet'}
-    : {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, uirevision:'carpet', scene:{xaxis:xa, yaxis:ya, zaxis:{title:{text:o.u}}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
+    ? {margin:{l:60,r:20,t:10,b:50}, height:a3H('a3Carpet', 430), font:a3font, showlegend:false, xaxis:xa, yaxis:ya, uirevision:'carpet',
+        shapes:[{type:'line', x0:ds, x1:ds, y0:-0.5, y1:23.5, line:{color:'#1b1a17', width:2}}], annotations:[{x:ds, y:23.5, yanchor:'bottom', text:dLbl, showarrow:false, font:{color:'#b26b00', size:12}}]}
+    : {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Carpet', 560), font:a3font, showlegend:false, uirevision:'carpet', scene:{xaxis:xa, yaxis:ya, zaxis:{title:{text:o.u}}, aspectratio:{x:2.4, y:1, z:0.7}, camera:{eye:{x:-1.2, y:-2.0, z:1.1}}, dragmode:'turntable'}},
     {responsive:true, displaylogo:false, scrollZoom:false});
   const T = {load:'Les crêtes du matin en hiver et les journées de semaine ressortent ; le week-end forme des creux réguliers.',
     pv:'La production monte en été et en milieu de journée ; les journées grises font des creux.',
@@ -1120,7 +1130,16 @@ function drawCarpet(){
     exp:'Le surplus revendu apparaît en milieu de journée, surtout les week-ends d\'été quand l\'usine consomme peu.',
     cut:'Chaque pic montre un moment où la batterie coupe une pointe : surtout tôt le matin et le soir, et davantage en hiver.',
     soc:'Bleu foncé = batterie pleine, clair = vide. On voit les jours d\'hiver où elle se vide sur les pointes et met du temps à se recharger au soleil.'};
-  document.getElementById('a3CarpetTxt').textContent = `${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+  const dayV = zs.reduce((a, b) => a + b, 0), dayM = Math.max(...zs);
+  document.getElementById('a3CarpetTxt').innerHTML = `<b>Jour choisi : ${dLbl}</b> (trait noir) · ${q === 'soc' ? `moyenne ${fN(dayV/24)} ${o.u}` : q === 'grid' || q === 'cut' ? `maximum ${fN(dayM)} ${o.u}` : `moyenne ${fN(dayV/24)} ${o.u}, maximum ${fN(dayM)} ${o.u}`}. <span class="cap">Molette de la souris sur le graphique : jour suivant / précédent (Maj + molette : semaine). Clic sur le relief : choisir ce jour.</span><br>${r.v.name} · ${o.t}, ${q==='grid'||q==='cut' ? 'maximum de chaque heure' : 'moyenne de chaque heure'}. ${T[q]}`;
+  const el = document.getElementById('a3Carpet');
+  if (!el._wheel){ el._wheel = true; let acc = 0, raf = 0, slow = 0;
+    el.addEventListener('wheel', e => { e.preventDefault(); acc += e.deltaY || e.deltaX; if (Math.abs(acc) < 40) return;
+      const st = (acc > 0 ? 1 : -1)*(e.shiftKey ? 7 : 1); acc = 0; a3Day(st);
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(drawCarpet);
+      clearTimeout(slow); slow = setTimeout(() => { drawFlow(); drawSite(); }, 250); }, {passive:false});
+    el.on('plotly_click', ev => { const pt = ev.points && ev.points[0]; if (!pt || typeof pt.x !== 'number') return;
+      const d = new Date(YEAR.t0 + Math.round(pt.x)*86400000).toISOString().slice(0,10); A3.day = d; document.getElementById('a3Day').value = d; drawCarpet(); drawFlow(); drawSite(); }); }
 }
 // ---- instant choisi (jour + quart d'heure) ----
 function a3Index(){
@@ -1407,7 +1426,7 @@ function drawSite(){
   const gv = geoView, gsx = gv ? gv.X[1]-gv.X[0] : 1, gsy = gv ? gv.Y[1]-gv.Y[0] : 1, gk = gv ? 1.5/Math.max(gsx, gsy) : 1, big = gv && gsx > 1000;
   const sc = geoOn ? {xaxis:{visible:false, range:gv.X}, yaxis:{visible:false, range:gv.Y}, zaxis:{visible:false, range:[gv.z0, gv.z1]}, aspectmode:'manual', aspectratio:{x:gsx*gk, y:gsy*gk, z:Math.max(0.12, (gv.z1-gv.z0)*gk)}, camera:big ? {eye:{x:-0.75, y:-0.95, z:0.65}, center:{x:0, y:0, z:-0.1}} : {eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
     : {xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'};
-  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo-' + (gv && gsx > 600 ? GEO.size : 'site') : 'site', paper_bgcolor:'#fff', scene:sc},
+  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:a3H('a3Site', 560), font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo-' + (gv && gsx > 600 ? GEO.size : 'site') : 'site', paper_bgcolor:'#fff', scene:sc},
     {responsive:true, displaylogo:false, scrollZoom:false});
   const el = document.getElementById('a3Site');
   if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
@@ -1469,7 +1488,19 @@ function drawFlow(){
 let a3Timer = null;
 function a3Step(dq){ A3.qh += dq; if (A3.qh > 95){ A3.qh = 0; a3Day(1); } if (A3.qh < 0){ A3.qh = 95; a3Day(-1); } document.getElementById('a3Qh').value = A3.qh; drawFlow(); if (window.Plotly) drawSite(); }
 function a3Day(dd){ const d = new Date(A3.day + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + dd); const iso = d.toISOString().slice(0,10); if (iso >= '2025-10-01' && iso <= '2026-09-30') A3.day = iso; document.getElementById('a3Day').value = A3.day; }
-document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); if (window.Plotly) drawSite(); };
+document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); if (window.Plotly){ drawSite(); drawCarpet(); } };
+// Plein écran des graphiques 3D + raccourcis clavier (← → heure, ↑ ↓ jour, espace lecture)
+function a3H(id, def){ const f = document.fullscreenElement, el = document.getElementById(id); return f && el && f.contains(el) ? Math.max(def, window.innerHeight - (id === 'a3Carpet' ? 150 : 90)) : def; }
+document.querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { const box = document.getElementById(b.dataset.fs);
+  if (document.fullscreenElement) document.exitFullscreen(); else if (box.requestFullscreen) box.requestFullscreen(); });
+document.addEventListener('fullscreenchange', () => {
+  document.querySelectorAll('[data-fs]').forEach(b => b.textContent = document.fullscreenElement && document.fullscreenElement.id === b.dataset.fs ? '✕ Quitter le plein écran' : '⛶ Plein écran');
+  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); }, 120); });
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('tab-a3').classList.contains('active') || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); a3Step(e.key === 'ArrowRight' ? 4 : -4); if (window.Plotly) drawCarpet(); }
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown'){ e.preventDefault(); a3Day(e.key === 'ArrowUp' ? 1 : -1); drawFlow(); if (window.Plotly){ drawSite(); drawCarpet(); } }
+  else if (e.key === ' ' && document.fullscreenElement){ e.preventDefault(); document.getElementById('a3Play').click(); } });
 document.getElementById('a3Qh').oninput = e => { A3.qh = +e.target.value; drawFlow(); if (window.Plotly) drawSite(); };
 document.getElementById('a3Play').onclick = () => {
   A3.play = !A3.play; document.getElementById('a3Play').textContent = A3.play ? '❚❚ Pause' : '▶ Lecture';
