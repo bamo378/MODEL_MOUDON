@@ -1152,24 +1152,25 @@ function sunPos(i){
   const az = Math.atan2(-Math.sin(H), Math.tan(dec)*Math.cos(lat) - Math.sin(lat)*Math.cos(H));
   return {el: el/rad, az: ((az/rad) + 360) % 360};
 }
-// ---- 2) Le site en 3D (schéma tiré des photomontages du 03.11.2026) ----
-// Repère local en mètres : x vers le sud-est (azimut 125°), y vers le nord-est (azimut 35°). Volumes approximatifs.
+// ---- 2) Le site en 3D, géoréférencé (emprise swisstopo VECTOR25 + photo aérienne SWISSIMAGE) ----
+// Repère local en mètres : origine LV95 E 2'551'052 / N 1'168'352 (angle ouest de l'usine), x vers le sud-est (azimut 124,44°), y vers le nord-est (azimut 34,44°).
+// Zones de panneaux reportées depuis les photomontages du 03.11.2026 sur l'emprise réelle. Hauteurs des bâtiments indicatives.
 const SITE_B = [
-  {n:'Halle principale', r:[22,110,60,186], h:10}, {n:'Halle nord-ouest (sheds)', r:[0,22,45,190], h:9},
-  {n:'Bâtiment sud', r:[0,92,-26,45], h:8}, {n:'Annexe', r:[-24,0,10,30], h:5}];
+  {n:'Halle principale', r:[25,124,22,178], h:10}, {n:'Halle nord-ouest (sheds)', r:[0,25,22,178], h:9},
+  {n:'Bâtiment sud-ouest', r:[34,124,-34,22], h:8}, {n:'Annexe', r:[0,30,0,22], h:5}];
 const SITE_Z = [
-  {id:'S1', mod:103, m2:210.3, ori:'Nord-Est', kwc:[50.6,50.6,50.6], role:['rue','ru','ru'], r:[90,110,176,186], h:10},
-  {id:'S2–S4', mod:207, m2:422.5, ori:'Sheds Est-Ouest', kwc:[101.43,101.43,101.43], role:['rue','ru','ru'], r:[30,74,178,186], h:10},
-  {id:'S5', mod:452, m2:922.6, ori:'Sheds Est-Ouest', kwc:[221.48,221.48,221.48], role:['rue','ru','ru'], r:[16,22,45,190], h:9},
-  {id:'S6', mod:1240, m2:2531.1, ori:'Sheds Est-Ouest', kwc:[607.6,607.6,607.6], role:['rue','ru','ru'], r:[0,16,45,190], h:9},
-  {id:'S7', mod:217, m2:442.9, ori:'Sud-Ouest', kwc:[106.3,106.3,106.3], role:['rue','ru','ru'], r:[-24,0,10,30], h:5},
-  {id:'S8–S9', mod:892, m2:1820.8, ori:'Nord-Ouest / Sud-Est', kwc:[437.1,437.1,437.1], role:['rue','ru','ru'], r:[0,46,5,45], h:8},
-  {id:'S10', mod:696, m2:1420.7, ori:'Sud-Ouest', kwc:[341,341,341], role:['rue','ru','ru'], r:[0,46,-26,5], h:8},
-  {id:'S11', mod:696, m2:1420.7, ori:'Nord-Est', kwc:[341,341,341], role:['rue','ru','ru'], r:[50,92,2,36], h:8},
-  {id:'S12–S35', mod:1110, m2:2265.7, ori:'Sud-Ouest', kwc:[543.9,543.9,705.6], role:['rue','ru','ru'], r:[83,110,88,175], h:10, note3:'V3 : 1\'440 modules, 2\'939 m², 705,6 kWc'},
-  {id:'S36–S43.1', mod:488, m2:996.1, ori:'Sud-Ouest', kwc:[239.1,239.1,0], role:['rue','ru','off'], r:[70,110,62,87], h:10},
-  {id:'S43.2–S76', mod:2052, m2:4188.5, ori:'Sud-Ouest', kwc:[1005.5,1005.5,0], role:['ru','ru','off'], r:[28,82,100,177], h:10},
-  {id:'S77–S83', mod:420, m2:857.3, ori:'Sud-Ouest', kwc:[205.8,205.8,0], role:['rue','ru','off'], r:[28,70,79,99], h:10}];
+  {id:'S1', mod:103, m2:210.3, ori:'Nord-Est', kwc:[50.6,50.6,50.6], role:['rue','ru','ru'], r:[101.5,124,165.6,178], h:10},
+  {id:'S2–S4', mod:207, m2:422.5, ori:'Sheds Est-Ouest', kwc:[101.43,101.43,101.43], role:['rue','ru','ru'], r:[34,83.5,168.1,178], h:10},
+  {id:'S5', mod:452, m2:922.6, ori:'Sheds Est-Ouest', kwc:[221.48,221.48,221.48], role:['rue','ru','ru'], r:[18.2,25,22,178], h:9},
+  {id:'S6', mod:1240, m2:2531.1, ori:'Sheds Est-Ouest', kwc:[607.6,607.6,607.6], role:['rue','ru','ru'], r:[0,18.2,22,178], h:9},
+  {id:'S7', mod:217, m2:442.9, ori:'Sud-Ouest', kwc:[106.3,106.3,106.3], role:['rue','ru','ru'], r:[0,30,0,22], h:5},
+  {id:'S8–S9', mod:892, m2:1820.8, ori:'Nord-Ouest / Sud-Est', kwc:[437.1,437.1,437.1], role:['rue','ru','ru'], r:[34,79,-9.5,22], h:8},
+  {id:'S10', mod:696, m2:1420.7, ori:'Sud-Ouest', kwc:[341,341,341], role:['rue','ru','ru'], r:[34,79,-34,-9.5], h:8},
+  {id:'S11', mod:696, m2:1420.7, ori:'Nord-Est', kwc:[341,341,341], role:['rue','ru','ru'], r:[82.9,124,-11.9,14.9], h:8},
+  {id:'S12–S35', mod:1110, m2:2265.7, ori:'Sud-Ouest', kwc:[543.9,543.9,705.6], role:['rue','ru','ru'], r:[93.6,124,56.7,164.4], h:10, note3:'V3 : 1\'440 modules, 2\'939 m², 705,6 kWc'},
+  {id:'S36–S43.1', mod:488, m2:996.1, ori:'Sud-Ouest', kwc:[239.1,239.1,0], role:['rue','ru','off'], r:[79,124,24.5,55.4], h:10},
+  {id:'S43.2–S76', mod:2052, m2:4188.5, ori:'Sud-Ouest', kwc:[1005.5,1005.5,0], role:['ru','ru','off'], r:[31.8,92.5,71.5,166.9], h:10},
+  {id:'S77–S83', mod:420, m2:857.3, ori:'Sud-Ouest', kwc:[205.8,205.8,0], role:['rue','ru','off'], r:[31.8,79,45.5,70.3], h:10}];
 const ROLE = {ru:{t:'Autoconsommation (RU)', c:'#2a78d6'}, rue:{t:'Injection totale (RUE)', c:'#1baf7a'}, off:{t:'Pas de panneaux dans cette variante', c:'#c9c7c0'}};
 function box(x0,x1,y0,y1,z0,z1){
   return {x:[x0,x1,x1,x0,x0,x1,x1,x0], y:[y0,y0,y1,y1,y0,y0,y1,y1], z:[z0,z0,z0,z0,z1,z1,z1,z1],
@@ -1198,16 +1199,134 @@ function panelRows(z, lift){
   return out.length ? meshJoin(out) : box(x0,x1,y0,y1,h,h+0.2);
 }
 function mixC(a, b, t){ const p = h => [1,3,5].map(k => parseInt(h.slice(k,k+2),16)); const A = p(a), B = p(b); return '#' + A.map((x,k) => Math.round(x + (B[k]-x)*t).toString(16).padStart(2,'0')).join(''); }
+// ---- Données géographiques réelles (chargées dans le navigateur depuis swisstopo, sans clé) ----
+const GEO = {E0:2551052, N0:1168352, az:34.44, h0:511.9, X:[-180,310], Y:[-200,380], st:'idle', d:null, msg:''};
+const GEO_A = GEO.az*Math.PI/180, GEO_B = GEO_A + Math.PI/2;
+function l2g(x, y){ return [GEO.E0 + x*Math.sin(GEO_B) + y*Math.sin(GEO_A), GEO.N0 + x*Math.cos(GEO_B) + y*Math.cos(GEO_A)]; }
+function g2l(E, N){ const dx = E - GEO.E0, dy = N - GEO.N0; return [dx*Math.sin(GEO_B) + dy*Math.cos(GEO_B), dx*Math.sin(GEO_A) + dy*Math.cos(GEO_A)]; }
+// LV95 → WGS84 (formules approchées swisstopo, précision ~1 m)
+function lv95wgs(E, N){
+  const y = (E - 2600000)/1e6, x = (N - 1200000)/1e6;
+  const lon = 2.6779094 + 4.728982*y + 0.791484*y*x + 0.1306*y*x*x - 0.0436*y*y*y;
+  const lat = 16.9023892 + 3.238272*x - 0.270978*y*y - 0.002528*x*x - 0.0447*y*y*x - 0.0140*x*x*x;
+  return [lon*100/36, lat*100/36];
+}
+// Triangulation d'un polygone simple (découpe des oreilles)
+function earcut2(P){
+  const n0 = P.length, ar = P.reduce((s, p, i) => { const q = P[(i+1)%n0]; return s + p[0]*q[1] - q[0]*p[1]; }, 0);
+  let idx = P.map((_, i) => i); if (ar < 0) idx.reverse();
+  const cr = (a, b, c) => (P[b][0]-P[a][0])*(P[c][1]-P[a][1]) - (P[b][1]-P[a][1])*(P[c][0]-P[a][0]);
+  const inT = (p, a, b, c) => cr(a, b, p) >= 0 && cr(b, c, p) >= 0 && cr(c, a, p) >= 0;
+  const T = []; let guard = 0;
+  while (idx.length > 3 && guard++ < 10000){
+    let cut = false; const n = idx.length;
+    for (let i = 0; i < n; i++){
+      const a = idx[(i+n-1)%n], b = idx[i], c = idx[(i+1)%n];
+      if (cr(a, b, c) <= 1e-9) continue;
+      if (idx.some(p => p !== a && p !== b && p !== c && inT(p, a, b, c))) continue;
+      T.push([a, b, c]); idx.splice(i, 1); cut = true; break;
+    }
+    if (!cut) break;
+  }
+  if (idx.length === 3) T.push(idx);
+  return T;
+}
+async function geoLoad(){
+  if (GEO.st !== 'idle') return;
+  GEO.st = 'loading'; GEO.msg = 'Chargement de la photo aérienne et du relief swisstopo…'; setTimeout(drawSite, 0);
+  try {
+    const cs = [[GEO.X[0],GEO.Y[0]],[GEO.X[1],GEO.Y[0]],[GEO.X[1],GEO.Y[1]],[GEO.X[0],GEO.Y[1]]].map(p => l2g(p[0], p[1]));
+    const bx = [Math.floor(Math.min(...cs.map(c=>c[0]))) - 10, Math.floor(Math.min(...cs.map(c=>c[1]))) - 10, Math.ceil(Math.max(...cs.map(c=>c[0]))) + 10, Math.ceil(Math.max(...cs.map(c=>c[1]))) + 10];
+    const W = 1400, H = Math.round(W*(bx[3]-bx[1])/(bx[2]-bx[0]));
+    const wms = `https://wms.geo.admin.ch/?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ch.swisstopo.swissimage&STYLES=&CRS=EPSG:2056&BBOX=${bx.join(',')}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/jpeg`;
+    // relief : 13 profils parallèles de 17 points (modèle de terrain swissALTI3D / DHM25)
+    const NX = 17, NY = 13, xs = [...Array(NX)].map((_, k) => GEO.X[0] + k*(GEO.X[1]-GEO.X[0])/(NX-1)), ys = [...Array(NY)].map((_, k) => GEO.Y[0] + k*(GEO.Y[1]-GEO.Y[0])/(NY-1));
+    const prof = ys.map(y => { const g = JSON.stringify({type:'LineString', coordinates:[l2g(GEO.X[0], y), l2g(GEO.X[1], y)].map(p => p.map(v => Math.round(v*10)/10))});
+      return fetch(`https://api3.geo.admin.ch/rest/services/profile.json?sr=2056&nb_points=${NX}&geom=${encodeURIComponent(g)}`).then(r => r.json()); });
+    const idf = fetch(`https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometryType=esriGeometryEnvelope&geometry=${bx.join(',')}&imageDisplay=1000,1000,96&mapExtent=${bx.join(',')}&tolerance=0&sr=2056&geometryFormat=geojson&returnGeometry=true&limit=200&layers=all:ch.swisstopo.vec25-gebaeude`).then(r => r.json()).catch(() => ({results:[]}));
+    const img = await fetch(wms).then(r => { if (!r.ok) throw new Error('wms'); return r.blob(); }).then(b => createImageBitmap(b));
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, W, H);
+    const px = cx.getImageData(0, 0, W, H).data;
+    const PR = await Promise.all(prof);
+    const Hg = PR.map(p => { const a = p.map(q => (q.alts && (q.alts.COMB ?? q.alts.DTM2 ?? q.alts.DTM25)) ?? GEO.h0); while (a.length < NX) a.push(a[a.length-1] ?? GEO.h0); return a.slice(0, NX); });
+    const inFoot = (x, y, m) => SITE_B.some(b => x > b.r[0]-m && x < b.r[1]+m && y > b.r[2]-m && y < b.r[3]+m);
+    const zAt = (x, y) => { const fx = Math.max(0, Math.min(NX-1.001, (x-GEO.X[0])/(GEO.X[1]-GEO.X[0])*(NX-1))), fy = Math.max(0, Math.min(NY-1.001, (y-GEO.Y[0])/(GEO.Y[1]-GEO.Y[0])*(NY-1)));
+      const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+      return (Hg[j][i]*(1-u)*(1-v) + Hg[j][i+1]*u*(1-v) + Hg[j+1][i]*(1-u)*v + Hg[j+1][i+1]*u*v) - GEO.h0; };
+    const col = (x, y, d) => { const [E, N] = l2g(x, y), cxp = (E - bx[0])/(bx[2]-bx[0])*W, cyp = (bx[3] - N)/(bx[3]-bx[1])*H; let r = 0, g = 0, b = 0, n = 0;
+      for (let a = -d; a <= d; a += Math.max(1, d)) for (let c = -d; c <= d; c += Math.max(1, d)){ const X = Math.round(cxp + a), Y = Math.round(cyp + c); if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const o = (Y*W + X)*4; r += px[o]; g += px[o+1]; b += px[o+2]; n++; }
+      return n ? `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})` : 'rgb(200,205,190)'; };
+    // sol texturé
+    const st = 3.5, gx = Math.floor((GEO.X[1]-GEO.X[0])/st) + 1, gy = Math.floor((GEO.Y[1]-GEO.Y[0])/st) + 1, G = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]};
+    for (let j = 0; j < gy; j++) for (let i = 0; i < gx; i++){
+      const x = GEO.X[0] + i*st, y = GEO.Y[0] + j*st; let z = zAt(x, y); if (inFoot(x, y, 2.5)) z = Math.min(z, -0.15);
+      G.x.push(x); G.y.push(y); G.z.push(z); G.c.push(col(x, y, 2));
+      if (i < gx-1 && j < gy-1){ const a = j*gx + i; G.i.push(a, a+1); G.j.push(a+1, a+gx+1); G.k.push(a+gx+1, a+gx); }
+    }
+    // toitures de l'usine texturées avec la photo aérienne
+    const R = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]};
+    SITE_B.forEach(b => { const s2 = 2, nx = Math.max(2, Math.round((b.r[1]-b.r[0])/s2) + 1), ny = Math.max(2, Math.round((b.r[3]-b.r[2])/s2) + 1), o = R.x.length;
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++){ const x = b.r[0] + i*(b.r[1]-b.r[0])/(nx-1), y = b.r[2] + j*(b.r[3]-b.r[2])/(ny-1);
+        R.x.push(x); R.y.push(y); R.z.push(b.h + 0.03); R.c.push(col(x, y, 1));
+        if (i < nx-1 && j < ny-1){ const a = o + j*nx + i; R.i.push(a, a+1); R.j.push(a+1, a+nx+1); R.k.push(a+nx+1, a+nx); } } });
+    // bâtiments voisins : emprises VECTOR25 extrudées (hauteur estimée selon la surface)
+    const nb = {x:[], y:[], z:[], i:[], j:[], k:[], c:[]}, nbTxt = []; let nN = 0;
+    ((await idf).results || []).forEach(f => {
+      const gm = f.geometry || {}, polys = gm.type === 'MultiPolygon' ? gm.coordinates : gm.type === 'Polygon' ? [gm.coordinates] : [];
+      polys.forEach(pl => {
+        let P = (pl[0] || []).map(c => g2l(c[0], c[1])); if (P.length > 1 && Math.hypot(P[0][0]-P[P.length-1][0], P[0][1]-P[P.length-1][1]) < 0.01) P.pop();
+        if (P.length < 3) return;
+        const cxl = P.reduce((s, p) => s + p[0], 0)/P.length, cyl = P.reduce((s, p) => s + p[1], 0)/P.length;
+        if (cxl > -5 && cxl < 130 && cyl > -40 && cyl < 185) return;                  // l'usine elle-même
+        if (cxl < GEO.X[0] || cxl > GEO.X[1] || cyl < GEO.Y[0] || cyl > GEO.Y[1]) return;
+        const area = Math.abs(P.reduce((s, p, i) => { const q = P[(i+1)%P.length]; return s + p[0]*q[1] - q[0]*p[1]; }, 0))/2;
+        const hgt = area < 250 ? 6.5 : area < 1200 ? 9 : 11, z0 = Math.min(...P.map(p => zAt(p[0], p[1]))) - 0.3, o = nb.x.length, n = P.length;
+        const roofC = col(cxl, cyl, 3), wallC = '#d8d4cc';
+        P.forEach(p => { nb.x.push(p[0], p[0]); nb.y.push(p[1], p[1]); nb.z.push(z0, z0 + 0.3 + hgt); nb.c.push(wallC, roofC); });
+        for (let i = 0; i < n; i++){ const a = o + 2*i, b = o + 2*((i+1)%n); nb.i.push(a, a); nb.j.push(b, b+1); nb.k.push(b+1, a+1); }
+        earcut2(P).forEach(t => { nb.i.push(o + 2*t[0] + 1); nb.j.push(o + 2*t[1] + 1); nb.k.push(o + 2*t[2] + 1); });
+        nN++;
+      });
+    });
+    GEO.d = {G, R, nb, nN, foot:bx};
+    GEO.st = 'ok'; GEO.msg = '';
+  } catch (e){
+    GEO.st = 'err'; GEO.msg = 'Photo aérienne swisstopo indisponible (connexion ?) : affichage schématique.';
+  }
+  drawSite();
+}
+// Export KML : zones de panneaux de la variante affichée, à ouvrir dans Google Earth
+function siteKml(){
+  const vi = A3.v, V = ['V1','V2','V3'][vi], kc = {ru:'ffd6782a', rue:'ff7aaf1b', off:'ffc0c7c9'};
+  const pm = SITE_Z.map(z => { const r = z.r, role = z.role[vi];
+    const ring = [[r[0],r[2]],[r[1],r[2]],[r[1],r[3]],[r[0],r[3]],[r[0],r[2]]].map(p => { const [E, N] = l2g(p[0], p[1]), [lo, la] = lv95wgs(E, N); return `${lo.toFixed(7)},${la.toFixed(7)},${(z.h + 0.5).toFixed(1)}`; }).join(' ');
+    return `<Placemark><name>${z.id}</name><description>${ROLE[role].t}${role === 'off' ? '' : ` · ${fN(z.kwc[vi],1)} kWc · ${z.ori}`}</description><styleUrl>#${role}</styleUrl><Polygon><extrude>1</extrude><altitudeMode>relativeToGround</altitudeMode><outerBoundaryIs><LinearRing><coordinates>${ring}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`; }).join('\n');
+  const [lo0, la0] = lv95wgs(...l2g(62, 72));
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Model SA Moudon – panneaux ${V}</name>
+<LookAt><longitude>${lo0.toFixed(6)}</longitude><latitude>${la0.toFixed(6)}</latitude><altitude>0</altitude><range>420</range><tilt>55</tilt><heading>20</heading></LookAt>
+${Object.entries(kc).map(([k, c]) => `<Style id="${k}"><LineStyle><color>ff333333</color><width>1</width></LineStyle><PolyStyle><color>${c.replace(/^ff/, 'cc')}</color></PolyStyle></Style>`).join('')}
+${pm}
+</Document></kml>`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([kml], {type:'application/vnd.google-earth.kml+xml'})); a.download = `Model_Moudon_panneaux_${V}.kml`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
 function drawSite(){
   if (!window.Plotly) return;
   const vi = A3.v, now = a3Now(), sun = sunPos(now.i), light = Math.max(0, Math.min(1, now.shape));
   const tr = [], M = (o, m) => tr.push(Object.assign({type:'mesh3d', flatshading:true, hoverinfo:'skip', lighting:{ambient:0.62, diffuse:0.75, specular:0.15, roughness:0.8}, lightposition:{x:-1000, y:-2000, z:3000}}, o, m));
   // environnement : terrain, routes, parking, voie ferrée, voisins
-  M({color:'#dfe6d6'}, box(-95,200,-110,280,-0.4,0));
-  M({color:'#a9aaa3'}, box(-62,-48,-110,280,0,0.08)); M({color:'#c8c6bd'}, box(-48,-44,-110,280,0,0.06));
-  M({color:'#a9aaa3'}, box(-95,200,-60,-50,0,0.08)); M({color:'#bdbab1'}, box(95,150,-48,40,0,0.06)); M({color:'#bdbab1'}, box(-40,-26,-30,55,0,0.06));
-  M({color:'#8a8780'}, box(-82,-76,-110,280,0,0.25)); M({color:'#8a8780'}, box(-72,-66,-110,280,0,0.25));
-  [[120,150,50,95,7],[140,185,-35,15,6],[-40,-25,200,230,6],[115,135,195,240,9]].forEach(n => M({color:'#ece9e2', hoverinfo:'text', text:new Array(8).fill('Bâtiment voisin (indicatif)')}, box(n[0],n[1],n[2],n[3],0,n[4])));
+  if (A3.geo !== false && GEO.st === 'idle') geoLoad();
+  const geoOn = A3.geo !== false && GEO.st === 'ok';
+  if (geoOn){
+    const d = GEO.d, ph = {flatshading:false, lighting:{ambient:0.92, diffuse:0.18, specular:0, roughness:1}};
+    M(Object.assign({vertexcolor:d.G.c}, ph), {x:d.G.x, y:d.G.y, z:d.G.z, i:d.G.i, j:d.G.j, k:d.G.k});
+    if (d.nb.x.length) M({vertexcolor:d.nb.c, hoverinfo:'text', text:new Array(d.nb.x.length).fill('Bâtiment voisin (emprise swisstopo, hauteur estimée)'), lighting:{ambient:0.7, diffuse:0.6, specular:0.05, roughness:0.9}}, {x:d.nb.x, y:d.nb.y, z:d.nb.z, i:d.nb.i, j:d.nb.j, k:d.nb.k});
+  } else {
+    M({color:'#dfe6d6'}, box(-95,200,-110,280,-0.4,0));
+    M({color:'#a9aaa3'}, box(-62,-48,-110,280,0,0.08)); M({color:'#c8c6bd'}, box(-48,-44,-110,280,0,0.06));
+    M({color:'#a9aaa3'}, box(-95,200,-60,-50,0,0.08)); M({color:'#bdbab1'}, box(95,150,-48,40,0,0.06)); M({color:'#bdbab1'}, box(-40,-26,-30,55,0,0.06));
+    M({color:'#8a8780'}, box(-82,-76,-110,280,0,0.25)); M({color:'#8a8780'}, box(-72,-66,-110,280,0,0.25));
+    [[120,150,50,95,7],[140,185,-35,15,6],[-40,-25,200,230,6],[115,135,195,240,9]].forEach(n => M({color:'#ece9e2', hoverinfo:'text', text:new Array(8).fill('Bâtiment voisin (indicatif)')}, box(n[0],n[1],n[2],n[3],0,n[4])));
+  }
   // bâtiments : volumes, façades vitrées, acrotères, lanterneaux
   SITE_B.forEach(b => {
     const [x0,x1,y0,y1] = b.r, hh = b.h;
@@ -1215,12 +1334,13 @@ function drawSite(){
     M({color:'#5f6b75'}, meshJoin([box(x0-0.15,x1+0.15,y0-0.15,y0,hh*0.45,hh*0.62), box(x0-0.15,x1+0.15,y1,y1+0.15,hh*0.45,hh*0.62), box(x0-0.15,x0,y0,y1,hh*0.45,hh*0.62), box(x1,x1+0.15,y0,y1,hh*0.45,hh*0.62)]));
     M({color:'#efede7'}, meshJoin([box(x0,x1,y0,y0+0.5,hh,hh+0.9), box(x0,x1,y1-0.5,y1,hh,hh+0.9), box(x0,x0+0.5,y0,y1,hh,hh+0.9), box(x1-0.5,x1,y0,y1,hh,hh+0.9)]));
   });
+  if (geoOn) M({vertexcolor:GEO.d.R.c, flatshading:false, lighting:{ambient:0.9, diffuse:0.2, specular:0, roughness:1}}, {x:GEO.d.R.x, y:GEO.d.R.y, z:GEO.d.R.z, i:GEO.d.R.i, j:GEO.d.R.j, k:GEO.d.R.k});
   M({color:'#2b2f33'}, meshJoin([box(57,61,140,144,10,10.9), box(74,78,112,116,10,10.9), box(100,104,150,154,10,10.9)]));
   M({color:'#7d8a8f'}, box(52,88,10,13,8,8.6));
   // arbres
-  const trees = [[150,120],[160,140],[170,100],[155,180],[175,160],[165,60],[-30,150],[-35,110],[-28,70],[130,-70],[100,-80],[60,-85],[-20,-80],[185,20],[178,200]];
-  tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]), y:trees.map(t=>t[1]), z:trees.map(()=>6), marker:{size:15, color:'#5d7f4a', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
-  tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]+3), y:trees.map(t=>t[1]-2), z:trees.map(()=>9), marker:{size:11, color:'#6f9457', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
+  const trees = geoOn ? [] : [[150,120],[160,140],[170,100],[155,180],[175,160],[165,60],[-30,150],[-35,110],[-28,70],[130,-70],[100,-80],[60,-85],[-20,-80],[185,20],[178,200]];
+  if (trees.length) tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]), y:trees.map(t=>t[1]), z:trees.map(()=>6), marker:{size:15, color:'#5d7f4a', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
+  if (trees.length) tr.push({type:'scatter3d', mode:'markers', x:trees.map(t=>t[0]+3), y:trees.map(t=>t[1]-2), z:trees.map(()=>9), marker:{size:11, color:'#6f9457', opacity:0.95, line:{width:0}}, hoverinfo:'skip'});
   // panneaux : rangées inclinées selon l'orientation, couleur selon la variante, éclat selon la production
   const zoneIdx = [];
   SITE_Z.forEach((z, k) => {
@@ -1231,7 +1351,7 @@ function drawSite(){
     M({color: col, hoverinfo:'text', text:new Array(geo.x.length).fill(txt), lighting:{ambient:0.55, diffuse:0.85, specular:0.55, roughness:0.35, fresnel:0.3}}, geo);
   });
   // soleil (direction réelle) et nord
-  const toLocal = (az) => [Math.cos((az - 125)*Math.PI/180), Math.cos((az - 35)*Math.PI/180)];
+  const toLocal = (az) => [Math.cos((az - GEO.az - 90)*Math.PI/180), Math.cos((az - GEO.az)*Math.PI/180)];
   const cx = 55, cy = 80, R = 150;
   if (sun.el > 0){
     const [dx, dy] = toLocal(sun.az), ce = Math.cos(sun.el*Math.PI/180), sz = Math.sin(sun.el*Math.PI/180);
@@ -1241,12 +1361,17 @@ function drawSite(){
   }
   const [nx, ny] = toLocal(0);
   tr.push({type:'scatter3d', mode:'lines+text', x:[-50, -50 + 30*nx], y:[215, 215 + 30*ny], z:[1, 1], text:['', 'N'], textposition:'top center', textfont:{size:16, color:'#b3261e'}, line:{color:'#b3261e', width:6}, hoverinfo:'skip'});
-  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:'site', paper_bgcolor:'#fff',
-    scene:{xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'}},
+  const sc = geoOn ? {xaxis:{visible:false, range:GEO.X}, yaxis:{visible:false, range:GEO.Y}, zaxis:{visible:false, range:[-20, 160]}, aspectmode:'manual', aspectratio:{x:1.27, y:1.5, z:0.47}, camera:{eye:{x:-0.5, y:-0.62, z:0.42}, center:{x:-0.05, y:-0.08, z:-0.12}}, dragmode:'turntable', bgcolor:'#eef3f8'}
+    : {xaxis:{visible:false, range:[-75,185]}, yaxis:{visible:false, range:[-85,255]}, zaxis:{visible:false, range:[-1, 155]}, aspectmode:'manual', aspectratio:{x:1.3, y:1.7, z:0.78}, camera:{eye:{x:-0.85, y:-0.95, z:0.55}, center:{x:0, y:0, z:-0.18}}, dragmode:'turntable', bgcolor:'#f7f9fb'};
+  Plotly.react('a3Site', tr, {margin:{l:0,r:0,t:0,b:0}, height:560, font:a3font, showlegend:false, uirevision:geoOn ? 'site-geo' : 'site', paper_bgcolor:'#fff', scene:sc},
     {responsive:true, displaylogo:false, scrollZoom:false});
   const el = document.getElementById('a3Site');
   if (!el._a3click){ el._a3click = true; el.on('plotly_click', ev => { const cn = ev.points[0].curveNumber, k = (el._zoneIdx || []).indexOf(cn); if (k >= 0){ A3.zone = k; drawSite(); } }); }
   el._zoneIdx = zoneIdx;
+  const inf = document.getElementById('a3SiteInfo');
+  if (!inf._geo){ inf._geo = true; inf.addEventListener('click', ev => {
+    if (ev.target.id === 'a3Geo'){ A3.geo = A3.geo === false; if (A3.geo && GEO.st === 'err'){ GEO.st = 'idle'; } drawSite(); }
+    if (ev.target.id === 'a3Kml') siteKml(); }); }
   // panneau d'information
   const r = now.r, v = r.v, tot = v.prodAc + v.prodRue;
   let zi = '<p class="cap">Cliquez sur une zone de panneaux pour voir son détail.</p>';
@@ -1255,7 +1380,7 @@ function drawSite(){
     const pz = role === 'ru' ? now.P*share : role === 'rue' ? now.Prue*share : 0;
     zi = `<div class="zinfo" style="border-left:4px solid ${ROLE[role].c}"><b>${z.id}</b> · ${ROLE[role].t}<br>${role === 'off' ? 'Zone sans panneaux dans cette variante.' : `${fN(vi === 2 && z.note3 ? 1440 : z.mod)} modules · ${fN(vi === 2 && z.note3 ? 2939.3 : z.m2,1)} m² · <b>${fN(z.kwc[vi],1)} kWc</b> · ${z.ori}<br>Production à cet instant : <b>${fN(pz)} kW</b> (≈ ${fN(share*100,1)} % de la partie ${role === 'ru' ? 'autoconsommation' : 'injection totale'})`}</div>`;
   }
-  document.getElementById('a3SiteInfo').innerHTML = `<div class="reallinks"><a class="btn sm" target="_blank" rel="noopener" href="https://map.geo.admin.ch/#/map?lang=fr&3d&swisssearch=Chemin%20du%20Devin%203%201510%20Moudon">Voir le site réel en 3D (swisstopo)</a><a class="btn sm" target="_blank" rel="noopener" href="https://earth.google.com/web/search/Chemin+du+Devin+3,+1510+Moudon,+Suisse">Ouvrir dans Google Earth</a></div><div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
+  document.getElementById('a3SiteInfo').innerHTML = `<div class="reallinks"><button class="btn sm" id="a3Geo">${A3.geo === false ? 'Afficher la photo aérienne et le relief' : 'Afficher le fond schématique'}</button><button class="btn sm" id="a3Kml">Télécharger les panneaux pour Google Earth (.kml)</button><a class="btn sm" target="_blank" rel="noopener" href="https://map.geo.admin.ch/#/map?lang=fr&3d&swisssearch=Chemin%20du%20Devin%203%201510%20Moudon">Voir le site réel en 3D (swisstopo)</a><a class="btn sm" target="_blank" rel="noopener" href="https://earth.google.com/web/search/Chemin+du+Devin+3,+1510+Moudon,+Suisse">Ouvrir dans Google Earth</a></div>${GEO.msg && A3.geo !== false ? `<p class="cap">${GEO.msg}</p>` : ''}${geoOn ? `<p class="cap">Fond : photo aérienne SWISSIMAGE et relief swissALTI3D (© swisstopo), ${GEO.d.nN} bâtiments voisins (emprises VECTOR25, hauteurs estimées). Zones de panneaux reportées depuis les photomontages.</p>` : ''}<div class="kpirow" style="grid-template-columns:repeat(4,1fr);margin:0 0 8px">
       <div class="kpi"><b>${fN(now.P + now.Prue)} kW</b><span>Production totale${v.rueKwc > 0 ? ` (dont RUE ${fN(now.Prue)} kW)` : ''}</span></div>
       <div class="kpi"><b>${fN(now.L)} kW</b><span>Consommation de l'usine</span></div>
       <div class="kpi"><b>${sun.el > 0 ? fN(sun.el,0)+'°' : 'nuit'}</b><span>Hauteur du soleil${sun.el > 0 ? ` · azimut ${fN(sun.az,0)}°` : ''}</span></div>
