@@ -1491,17 +1491,27 @@ function a3Step(dq){ A3.qh += dq; if (A3.qh > 95){ A3.qh = 0; a3Day(1); } if (A3
 function a3Day(dd){ const d = new Date(A3.day + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + dd); const iso = d.toISOString().slice(0,10); if (iso >= '2025-10-01' && iso <= '2026-09-30') A3.day = iso; document.getElementById('a3Day').value = A3.day; }
 document.getElementById('a3Day').onchange = e => { A3.day = e.target.value || A3.day; drawFlow(); if (window.Plotly){ drawSite(); drawCarpet(); } };
 // Plein écran des graphiques 3D + raccourcis clavier (← → heure, ↑ ↓ jour, espace lecture)
-function a3H(id, def){ const f = document.fullscreenElement, el = document.getElementById(id); return f && el && f.contains(el) ? Math.max(def, window.innerHeight - (id === 'a3Carpet' ? 150 : 90)) : def; }
+function a3FsEl(){ return document.fullscreenElement || document.querySelector('.a3fsbox.fsfake'); }
+function a3H(id, def){ const f = a3FsEl(), el = document.getElementById(id); return f && el && f.contains(el) ? Math.max(def, window.innerHeight - (id === 'a3Carpet' ? 150 : 90)) : def; }
+// plein écran natif, sinon (navigateur qui le refuse, iPad…) une fenêtre qui couvre toute la page
+function a3FsChanged(){
+  document.querySelectorAll('[data-fs]').forEach(b => { const f = a3FsEl(); b.textContent = f && f.id === b.dataset.fs ? '✕ Quitter le plein écran' : '⛶ Plein écran'; });
+  document.body.classList.toggle('fsopen', !!document.querySelector('.a3fsbox.fsfake'));
+  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); }, 120);
+}
+function a3FsExit(){ if (document.fullscreenElement) document.exitFullscreen(); document.querySelectorAll('.a3fsbox.fsfake').forEach(x => x.classList.remove('fsfake')); a3FsChanged(); }
 document.querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { const box = document.getElementById(b.dataset.fs);
-  if (document.fullscreenElement) document.exitFullscreen(); else if (box.requestFullscreen) box.requestFullscreen(); });
-document.addEventListener('fullscreenchange', () => {
-  document.querySelectorAll('[data-fs]').forEach(b => b.textContent = document.fullscreenElement && document.fullscreenElement.id === b.dataset.fs ? '✕ Quitter le plein écran' : '⛶ Plein écran');
-  if (document.getElementById('tab-a3').classList.contains('active') && window.Plotly) setTimeout(() => { drawCarpet(); drawSite(); drawFlow(); }, 120); });
+  if (a3FsEl()){ a3FsExit(); return; }
+  const fake = () => { box.classList.add('fsfake'); a3FsChanged(); };
+  try { const pr = box.requestFullscreen ? box.requestFullscreen() : null; if (pr && pr.catch) pr.catch(fake); else if (!pr) fake(); } catch (e) { fake(); }
+  setTimeout(() => { if (!a3FsEl()) fake(); }, 400); });
+document.addEventListener('fullscreenchange', a3FsChanged);
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.querySelector('.a3fsbox.fsfake')){ a3FsExit(); return; }
   if (!document.getElementById('tab-a3').classList.contains('active') || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); a3Step(e.key === 'ArrowRight' ? 4 : -4); if (window.Plotly) drawCarpet(); }
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown'){ e.preventDefault(); a3Day(e.key === 'ArrowUp' ? 1 : -1); drawFlow(); if (window.Plotly){ drawSite(); drawCarpet(); } }
-  else if (e.key === ' ' && document.fullscreenElement){ e.preventDefault(); document.getElementById('a3Play').click(); } });
+  else if (e.key === ' ' && a3FsEl()){ e.preventDefault(); document.getElementById('a3Play').click(); } });
 document.getElementById('a3Qh').oninput = e => { A3.qh = +e.target.value; drawFlow(); if (window.Plotly) drawSite(); };
 document.getElementById('a3Play').onclick = () => {
   A3.play = !A3.play; document.getElementById('a3Play').textContent = A3.play ? '❚❚ Pause' : '▶ Lecture';
