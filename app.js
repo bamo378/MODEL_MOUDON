@@ -5,6 +5,10 @@
 const D = window.DATA;
 const DT = 0.25;
 const COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
+const COLOR_OPT = '#c08a00';
+let RES_OPT = null, RES_OPT_KEY = null;
+const CMP = () => RES_OPT ? RES.concat([RES_OPT]) : RES;
+const CMPC = () => RES_OPT ? COLORS.concat([COLOR_OPT]) : COLORS;
 const GREY = '#8c8b86';
 // Énergie réactive facturée (kvarh) par mois, factures Romande Energie oct. 2025 → sept. 2026 (sept. = sept. 2025)
 const Q_KVARH = [132846,175180,127547,162847,153514,167765,149233,155092,147299,75265,65240,98495];
@@ -290,8 +294,31 @@ function renderCards(){
      </div>
      ${r.hasBat && r.mode===0 ? `<div class="cap">Pilotage ${PILOT[pilot()].t.toLowerCase()} : ${seuilTxt(r)}, réserve pointes hiver ${fN(r.R*r.cap)} kWh, été ${fN(r.Rs*r.cap)} kWh${G.auto?' (réglage automatique)':''}</div>` : ''}
    </div>`).join('');
+  el.insertAdjacentHTML('beforeend', optCard());
   el.querySelectorAll('input[data-k]').forEach(inp => inp.onchange = e => { V[+e.target.dataset.v][e.target.dataset.k] = e.target.checked; save(); schedule(); });
+  const go = el.querySelector('#goOpt'); if (go) go.onclick = () => document.querySelector('.tab[data-tab=opt]').click();
   bindTips(el);
+}
+function optCard(){
+  const r = RES_OPT;
+  if (!r) return `<div class="card opt" style="--c:${COLOR_OPT}"><h2>Version optimale</h2><div class="sub">Calcul en cours en arrière-plan… <span id="optProg"></span></div><p class="cap">Elle apparaîtra ici dès que la recherche sera terminée (environ 15 s), et se met à jour à chaque changement de paramètre.</p></div>`;
+  const c = r.cell, o = OP_OPTS.filter(([k]) => !OP[k]).map(([,t]) => t.toLowerCase());
+  return `<div class="card opt" style="--c:${COLOR_OPT}">
+     <h2>Version optimale</h2>
+     <div class="sub">${fN(c.ru)} kWc autoconso${c.rue>0 ? ' + ' + fN(c.rue)+' kWc injection totale' : ''} · ${c.bat ? 'batterie '+fN(c.bat)+' kWh / '+fN(c.kw)+' kW' : 'sans batterie'}</div>
+     <div class="toggles"><button class="btn sm" id="goOpt" style="margin:0">Régler dans l'onglet Version optimale</button><i class="tip" data-tip="Meilleure combinaison puissance RU / puissance RUE / batterie trouvée par l'onglet Version optimale (critère : ${OP_CRIT[OP.crit].t()}). Prix au prorata : ${fN(CF.pKwc)} CHF/kWc et ${fN(BS.perKwh)} CHF/kWh de batterie. Se met à jour à chaque changement de paramètre.">i</i></div>
+     <div class="kpis">
+       <div class="kpi"><b>${fCHF(r.net)}</b><span>Investissement net (CHF)</span></div>
+       <div class="kpi"><b>${fY(r.payback)}</b><span>Entièrement payé après</span></div>
+       <div class="kpi"><b>${fCHF(r.year1)}</b><span>Gain 1re année (CHF)</span></div>
+       <div class="kpi"><b>${fM(r.npv)}</b><span>Gain net actualisé (CHF)</span></div>
+       <div class="kpi"><b>${fN(r.tauxAc*100,1)} %</b><span>Taux d'autoconsommation</span></div>
+       <div class="kpi"><b>${fN(r.couverture*100,1)} %</b><span>Consommation couverte</span></div>
+       <div class="kpi"><b>${fN(r.peakAvg)} kW</b><span>Pointe moyenne / mois</span></div>
+       <div class="kpi"><b>${fM(r.cum)}</b><span>Liquidités à ${Math.round(G.horizon)} ans (CHF)</span></div>
+     </div>
+     <div class="cap">${r.hasBat && r.mode===0 ? `Pilotage ${PILOT[pilot()].t.toLowerCase()} : ${seuilTxt(r)}. ` : ''}${o.length ? 'Options désactivées : ' + o.join(', ') + '. ' : ''}Prix au prorata (${fN(CF.pKwc)} CHF/kWc), pas les prix du Fichier Vert.</div>
+   </div>`;
 }
 
 function renderComp(){
@@ -300,16 +327,16 @@ function renderComp(){
   const sorted = RES.map(r=>r.npv).sort((a,b)=>b-a);
   document.getElementById('best').textContent = `Meilleure variante sur le gain net actualisé : ${RES[best].v.name} · ${fCHF(sorted[0]-sorted[1])} CHF d'avance sur la 2e (${fN((sorted[0]-sorted[1])/Math.abs(sorted[0])*100,1)} %).`;
   const yrs = Array.from({length:H+1},(_,i)=>i);
-  chart('chCum', {type:'line', data:{labels:yrs, datasets: RES.map((r,i)=>({label:r.v.name, data:[-Math.min(G.fp, r.price)].concat(r.rows.map(x=>x.cum)), borderColor:COLORS[i], backgroundColor:COLORS[i], borderWidth:2.5, pointRadius:0, tension:.1}))},
+  chart('chCum', {type:'line', data:{labels:yrs, datasets: CMP().map((r,i)=>({label:r.v.name, data:[-Math.min(G.fp, r.price)].concat(r.rows.map(x=>x.cum)), borderColor:CMPC()[i], backgroundColor:CMPC()[i], borderDash: r.cell ? [6,3] : [], borderWidth:2.5, pointRadius:0, tension:.1}))},
     options:{interaction:{mode:'index',intersect:false}, plugins:{tooltip:tipCHF, legend:{position:'bottom'}}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}});
-  chart('chNpv', {type:'bar', data:{labels:RES.map(r=>r.v.name.split(' · ')[0]), datasets:[{label:'Gain net actualisé', data:RES.map(r=>r.npv), backgroundColor:COLORS, borderRadius:4}]},
+  chart('chNpv', {type:'bar', data:{labels:CMP().map(r=>r.v.name.split(' · ')[0]), datasets:[{label:'Gain net actualisé', data:CMP().map(r=>r.npv), backgroundColor:CMPC(), borderRadius:4}]},
     options:{plugins:{legend:{display:false}, tooltip:tipCHF}, scales:{x:{grid:{display:false}}, y:{...gridY, beginAtZero:true, title:{display:true,text:'CHF'}}}}});
-  chart('chPeak', {type:'line', data:{labels:MONTHS, datasets:[{label:'Sans PV', data:Array.from(BASE.peak), borderColor:GREY, backgroundColor:GREY, borderDash:[5,4], borderWidth:2, pointRadius:2}].concat(RES.map((r,i)=>({label:r.v.name.split(' · ')[0], data:r.peakMonths, borderColor:COLORS[i], backgroundColor:COLORS[i], borderWidth:2, pointRadius:2})))},
+  chart('chPeak', {type:'line', data:{labels:MONTHS, datasets:[{label:'Sans PV', data:Array.from(BASE.peak), borderColor:GREY, backgroundColor:GREY, borderDash:[5,4], borderWidth:2, pointRadius:2}].concat(CMP().map((r,i)=>({label:r.v.name.split(' · ')[0], data:r.peakMonths, borderColor:CMPC()[i], backgroundColor:CMPC()[i], borderDash: r.cell ? [6,3] : [], borderWidth:2, pointRadius:2})))},
     options:{interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fN(c.parsed.y)} kW`}}}, scales:{x:{grid:{display:false}}, y:{...gridY, title:{display:true,text:'kW'}}}}});
-  chart('chEnergy', {type:'bar', data:{labels:RES.map(r=>r.v.name.split(' · ')[0]), datasets:[
-      {label:'Autoconsommé', data:RES.map(r=>r.autoconso/1000), backgroundColor:'#2a78d6'},
-      {label:'Surplus revendu', data:RES.map(r=>r.surplus/1000), backgroundColor:'#eda100'},
-      {label:'Injection totale (RUE)', data:RES.map(r=>r.rueProd/1000), backgroundColor:'#1baf7a'}]},
+  chart('chEnergy', {type:'bar', data:{labels:CMP().map(r=>r.v.name.split(' · ')[0]), datasets:[
+      {label:'Autoconsommé', data:CMP().map(r=>r.autoconso/1000), backgroundColor:'#2a78d6'},
+      {label:'Surplus revendu', data:CMP().map(r=>r.surplus/1000), backgroundColor:'#eda100'},
+      {label:'Injection totale (RUE)', data:CMP().map(r=>r.rueProd/1000), backgroundColor:'#1baf7a'}]},
     options:{plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fN(c.parsed.y)} MWh`}}}, scales:{x:{stacked:true, grid:{display:false}}, y:{stacked:true, ...gridY, title:{display:true,text:'MWh/an'}}}}});
   const L = [
     ['Prix de l\'offre TTC (CHF)', r=>fCHF(r.price)], ['Subventions RU + RUE (CHF)', r=>fCHF(r.sub)], ['Investissement net (CHF)', r=>fCHF(r.net), 1],
@@ -322,8 +349,8 @@ function renderComp(){
     ['Taux d\'autoconsommation, avec batterie', r=>fN(r.tauxAc*100,1)+' %', 1], ['Taux d\'autoconsommation, sans batterie', r=>fN(r.tauxAc0*100,1)+' %'],
     ['Taux d\'autoconsommation sur toute la production (RUE comprise)', r=>fN(r.tauxTot*100,1)+' %'], ['Consommation de l\'usine couverte par le solaire', r=>fN(r.couverture*100,1)+' %', 1], ['Surplus revendu (MWh/an)', r=>fN(r.surplus/1000)], ['Injection totale (MWh/an)', r=>fN(r.rueProd/1000)],
     ['Pointe moyenne (kW)', r=>fN(r.peakAvg)], ['Cycles de batterie par an', r=>r.hasBat?fN(r.cycles):'–']];
-  document.getElementById('tblComp').innerHTML = '<thead><tr><th></th>' + RES.map((r,i)=>`<th style="color:${COLORS[i]}">${r.v.name}</th>`).join('') + '</tr></thead><tbody>' +
-    L.map(([l,f,h]) => `<tr class="${h?'hl':''}"><td>${l}</td>${RES.map(r=>`<td>${f(r)}</td>`).join('')}</tr>`).join('') + '</tbody>';
+  document.getElementById('tblComp').innerHTML = '<thead><tr><th></th>' + CMP().map((r,i)=>`<th style="color:${CMPC()[i]}">${r.cell ? 'Version optimale<br><span style="font-weight:400;font-size:11px">'+fN(r.cell.ru)+' RU + '+fN(r.cell.rue)+' RUE kWc'+(r.cell.bat?', '+fN(r.cell.bat)+' kWh':'')+'</span>' : r.v.name}</th>`).join('') + '</tr></thead><tbody>' +
+    L.map(([l,f,h]) => `<tr class="${h?'hl':''}"><td>${l}</td>${CMP().map(r=>`<td>${f(r)}</td>`).join('')}</tr>`).join('') + '</tbody>';
 }
 
 let fluxIdx = 0, detIdx = 0;
@@ -881,7 +908,16 @@ const OP_OPTS = [['bat','Batterie','Tester des batteries sur la partie RU. Désa
   ['allowRue','Autoriser une installation RUE','Désactivé : seule une installation en autoconsommation (RU) est testée, sans injection totale séparée.'],
   ['grid','Recharge réseau','La batterie peut se recharger sur le réseau jusqu\'à sa réserve (désactivé par défaut).'],
   ['wk','Réserve libérée le week-end','Du vendredi 22h au dimanche 20h, la batterie se vide pour l\'usine.']];
-let opRun = 0, opData = null, opDrawn = null, opCamRev = 1;
+let opRun = 0, opData = null, opDrawn = null, opCamRev = 1, opRunKey = null;
+// Résultat complet de la version optimale pour l'onglet Comparaison ; renvoie true s'il a changé
+function opSetResult(){
+  if (!opData) return false;
+  const best = opBest(opData.cells), k = opData.key + '|' + OP.crit + '|' + [best.ru, best.rue, best.bat].join(',') + '|' + JSON.stringify(RES.map(r => Math.round(r.cum)));
+  if (k === RES_OPT_KEY) return false;
+  const keep = G.rueOn; G.rueOn = OP.rue;
+  let r; try { r = compute(Object.assign(opVariant(best.ru, best.rue, best.bat), {gridChg: OP.grid})); } finally { G.rueOn = keep; }
+  r.cell = best; RES_OPT = r; RES_OPT_KEY = k; return true;
+}
 const opSig = () => [opData && opData.key, OP.crit, OP.view, OP.mode3, opCamRev, RES.map(r => Math.round(r.rows[r.rows.length-1].cum)).join(',')].join('§');
 function loadPlotly(cb){
   if (window.Plotly) return cb();
@@ -891,7 +927,7 @@ function loadPlotly(cb){
 }
 function opVariant(ru, rue, bat){
   const bc = bat > 0 ? bsFixed(V[1]) + BS.perKwh*bat : 0;
-  return Object.assign({}, V[1], {name:'Optimum', acKwc: ru, rueKwc: rue, prodAc: ru*CF.yAc, prodRue: rue*CF.yRue,
+  return Object.assign({}, V[1], {name:'Version optimale', acKwc: ru, rueKwc: rue, prodAc: ru*CF.yAc, prodRue: rue*CF.yRue,
     price: (ru + rue)*CF.pKwc + bc, batOn: bat > 0, psOn: OP.ps, batKwh: bat, batKw: Math.round(bat*BS.ratio), batReduc: bc, subCom: 0, wkFree: OP.wk, gridChg: OP.grid});
 }
 const OP_CRIT = {cum: {t: () => `Liquidités à ${Math.round(G.horizon)} ans`, u:'CHF'}, npv: {t: () => 'Gain net actualisé', u:'CHF'}, roi: {t: () => `Liquidités à ${Math.round(G.horizon)} ans par franc investi (net)`, u:'CHF/CHF'}};
@@ -906,9 +942,13 @@ function renderOP(force){
   ot.querySelectorAll('input').forEach(i => i.onchange = () => { OP[i.dataset.k] = i.checked; renderOP(); });
   document.querySelectorAll('#opCrit button').forEach(b => b.classList.toggle('on', b.dataset.c === OP.crit));
   document.querySelectorAll('#opMode3 button').forEach(b => b.classList.toggle('on', b.dataset.m === OP.mode3));
-  if (!document.getElementById('tab-opt').classList.contains('active') && !force) return;
+  const optOn = document.getElementById('tab-opt').classList.contains('active'), compOn = document.getElementById('tab-comp').classList.contains('active');
+  if (!optOn && !compOn && !force) return;
   const key = opKey();
-  if (opData && opData.key === key){ if (opDrawn !== opSig()) loadPlotly(drawOP); return; }
+  if (opData && opData.key === key){ if (opSetResult()){ renderCards(); renderComp(); } if (optOn && opDrawn !== opSig()) loadPlotly(drawOP); return; }
+  if (opRunKey === key) return; // déjà en cours pour ces paramètres
+  opRunKey = key;
+  if (RES_OPT){ RES_OPT = null; RES_OPT_KEY = null; renderCards(); renderComp(); } // l'ancienne version optimale n'est plus valable
   const run = ++opRun, st = document.getElementById('opStatus'), H = Math.max(1, Math.round(G.horizon));
   const RU = [], BAT = [];
   for (let x = 0; x <= OP.roof + 1e-9; x += OP.step) RU.push(Math.round(x));
@@ -931,9 +971,11 @@ function renderOP(force){
     const pc = n/jobs.length, el = (performance.now() - t0all)/1000;
     st.textContent = n < jobs.length ? `Calcul ${Math.round(pc*100)} % · ${n} / ${jobs.length} configurations · encore ~${Math.max(1, Math.round(el/pc - el))} s` : `${jobs.length} configurations calculées en ${Math.round(el)} s · scénario ${scen().t}`;
     document.getElementById('opBar').style.width = (pc*100) + '%';
+    const pg = document.getElementById('optProg'); if (pg) pg.textContent = Math.round(pc*100) + ' %';
     if (n < jobs.length){ setTimeout(step, 0); return; }
-    opData = {key, cells, RU, BAT, H};
-    loadPlotly(drawOP);
+    opData = {key, cells, RU, BAT, H}; opRunKey = null;
+    if (opSetResult()){ renderCards(); renderComp(); }
+    if (document.getElementById('tab-opt').classList.contains('active')) loadPlotly(drawOP);
   };
   document.getElementById('opBar').style.width = '0%';
   st.textContent = 'Calcul…'; setTimeout(step, 30);
@@ -1018,7 +1060,7 @@ const opLater = fn => { clearTimeout(opTyping); opTyping = setTimeout(fn, 700); 
 ['roof','step','bmax','bstep'].forEach(k => { const el = document.getElementById('op_' + k); if (el) el.oninput = el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0){ OP[k] = x; opLater(renderOP); } }; });
 [['yAc','op_yAc'],['yRue','op_yRue'],['pKwc','op_pKwc']].forEach(([k,id]) => { const el = document.getElementById(id); el.oninput = el.onchange = () => { const x = parseFloat(el.value); if (isFinite(x) && x > 0){ CF[k] = x; opLater(renderOP); } }; });
 document.getElementById('op_perKwh').oninput = document.getElementById('op_perKwh').onchange = e => { const x = parseFloat(e.target.value); if (isFinite(x) && x > 0){ BS.perKwh = x; opLater(renderOP); } };
-document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; renderOP(); });
+document.querySelectorAll('#opCrit button').forEach(b => b.onclick = () => { OP.crit = b.dataset.c; if (opSetResult()){ renderCards(); renderComp(); } renderOP(); });
 document.querySelectorAll('#opMode3 button').forEach(b => b.onclick = () => { OP.mode3 = b.dataset.m; renderOP(); });
 document.getElementById('opView').onchange = e => { OP.view = e.target.value; drawOP(); };
 document.getElementById('opCam').onclick = () => { opCamRev++; drawOP(); };

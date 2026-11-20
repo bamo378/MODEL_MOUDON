@@ -195,3 +195,5 @@ table.why{width:auto;margin:6px 0 8px}table.why td,table.why th{text-align:left;
 @media print{.vsw{display:none!important}}
 .opprog{height:4px;background:#e3e2dc;border-radius:2px;overflow:hidden}.opprog div{height:100%;width:0;background:#1c3d5a;transition:width .2s}
 #opMap,#op3d{width:100%}
+.cards{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card.opt{background:#fffbef}
