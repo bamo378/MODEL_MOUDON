@@ -266,7 +266,7 @@ const tipCHF = {callbacks:{label: c => `${c.dataset.label || c.label}: ${fN(c.pa
 let RES = [];
 function render(){
   RES = V.map(compute);
-  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP(); renderA3();
+  renderCards(); renderComp(); renderFlux(); renderPS(); renderDetail(); renderAct(); renderBS(); renderOP(); renderA3(); renderMC();
   document.getElementById('status').textContent = 'Calcul à jour · ' + new Date().toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -1479,6 +1479,152 @@ document.getElementById('a3Speed').onchange = () => { if (A3.play){ document.get
 document.getElementById('a3Prev').onclick = () => a3Step(-4);
 document.getElementById('a3Next').onclick = () => a3Step(4);
 
+/* ---------------- Analyse de risque (Monte-Carlo) ---------------- */
+// Chaque tirage rejoue les flux annuels de compute() avec des facteurs aléatoires (météo, prix, batterie, coûts, subvention).
+const MC_DEF = {n: 2000, seed: 1, goal: 8, sel: 1, yb: 4, yw: 5, pl: 15, pd: 2, rl: 25, bmin: 50, ov: 10, mt: 20, sb: 10};
+let MC = Object.assign({}, MC_DEF);
+try { const s = JSON.parse(localStorage.getItem('moudon_mc')); if (s) MC = Object.assign({}, MC_DEF, s); } catch (e) {}
+function saveMC(){ try { localStorage.setItem('moudon_mc', JSON.stringify(MC)); } catch (e) {} }
+const MC_P = [
+  ['yb', 'Rendement solaire du site', '± % (écart-type)', 0, 10, 1, 'Erreur possible sur la production moyenne prévue (modèle, salissures, ombrages). Constante sur toute la durée.'],
+  ['yw', 'Météo d\'une année à l\'autre', '± % (écart-type)', 0, 12, 1, 'En Suisse, une année varie typiquement de ±4 à 6 % autour de la moyenne. Tirée chaque année.'],
+  ['pl', 'Prix d\'achat de l\'électricité', '± % (écart-type)', 0, 40, 1, 'Niveau du tarif Romande Énergie (énergie, réseau, puissance) par rapport à aujourd\'hui. Touche les économies d\'autoconsommation et de pointe.'],
+  ['pd', 'Évolution annuelle des prix', '± %/an (écart-type)', 0, 6, 0.5, 'Chaque année le prix peut monter ou baisser (marche aléatoire, sans tendance). S\'applique à l\'achat et à la reprise.'],
+  ['rl', 'Tarif de reprise (injection)', '± % (écart-type)', 0, 50, 1, 'Prix payé pour l\'électricité injectée, très dépendant du marché depuis 2026. Touche la RUE et le surplus.'],
+  ['bmin', 'Efficacité du peak shaving', 'pire cas, % du gain prévu', 0, 100, 5, 'Part du gain de pointe dû à la batterie réellement obtenue : tirée entre ce minimum et 100 %.'],
+  ['ov', 'Dépassement de l\'investissement', 'jusqu\'à + %', 0, 30, 1, 'Coût final entre −¼ et + cette valeur du prix prévu (imprévus de chantier, raccordement).'],
+  ['mt', 'Assurance et entretien', '± % (écart-type)', 0, 60, 5, 'Écart des frais annuels (pannes, remplacement d\'onduleurs, assurance).'],
+  ['sb', 'Subvention', 'jusqu\'à − %', 0, 50, 5, 'Montant finalement versé entre ce rabais et 100 % (changement de tarif Pronovo, enchère RUE).']];
+function mcRng(seed){ let a = seed >>> 0; const u = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0)/4294967296; };
+  return {u, n: () => { let x = 0, y = 0; while (x === 0) x = u(); y = u(); return Math.sqrt(-2*Math.log(x))*Math.cos(2*Math.PI*y); }}; }
+// Rejoue les flux de compute() avec des facteurs : f = {yb, yw[n], pr[n], rr[n], bat, inv, mt, sb}
+function mcFlows(r, f, H){
+  const pkBat = r.mode === 0 ? scen().k*(r.peakPv.reduce((s,x)=>s+x,0) - r.peakMonths.reduce((s,x)=>s+x,0))*G.puiss : 0, pkPv = r.sPeak - pkBat;
+  const price = r.price*f.inv, dep = r.dep*f.inv*f.mt, sub = r.sub*f.sb;
+  let debt = Math.max(price - G.fp, 0), cum = -Math.min(G.fp, price), npv = -price, pay = null; const cumY = [cum];
+  for (let n = 1; n <= H; n++){
+    const d = Math.pow(1 - G.deg, n-1), y = f.yb*f.yw[n-1], p = f.pr[n-1], q = f.rr[n-1];
+    const rec = (r.sEnergy*y*p + r.sQ*p + (r.sExp + r.sRue)*y*q)*d + (pkPv + pkBat*f.bat)*p;
+    const subv = n === Math.round(G.subYear) ? sub : 0, dispo = rec - dep - G.hyp*debt + subv, d0 = debt, remb = Math.max(Math.min(debt, dispo), 0);
+    debt -= remb; cum += dispo - remb; cumY.push(cum);
+    if (pay === null && d0 > 0 && debt <= 1e-6) pay = n - 1 + (dispo > 0 ? remb/dispo : 1);
+    npv += (rec - dep + subv)/Math.pow(1 + G.actu, n);
+  }
+  if (pay === null && price - G.fp <= 0) pay = 0;
+  return {pay, cum, npv, cumY};
+}
+const mcOnes = H => ({yb:1, yw:new Array(H).fill(1), pr:new Array(H).fill(1), rr:new Array(H).fill(1), bat:1, inv:1, mt:1, sb:1});
+const pct = (a, p) => { if (!a.length) return NaN; const s = a; const i = (s.length - 1)*p, lo = Math.floor(i), hi = Math.ceil(i); return s[lo] + (s[hi] - s[lo])*(i - lo); };
+let MC_RES = null, MC_KEY = null;
+function mcRun(){
+  const H = Math.max(1, Math.round(G.horizon)), list = CMP(), key = JSON.stringify([MC, H, list.map(r => [Math.round(r.cum), r.price, r.sub])]);
+  if (key === MC_KEY) return MC_RES;
+  const out = list.map((r, vi) => {
+    const R = mcRng(MC.seed*7919 + 1), pays = [], cums = [], npvs = [], fan = Array.from({length:H+1}, () => []);
+    for (let s = 0; s < MC.n; s++){
+      const f = {yb: Math.max(0.6, 1 + MC.yb/100*R.n()), yw:[], pr:[], rr:[], bat: MC.bmin/100 + (1 - MC.bmin/100)*R.u(),
+        inv: 1 + MC.ov/100*(R.u()*1.25 - 0.25), mt: Math.max(0.3, 1 + MC.mt/100*R.n()), sb: 1 - MC.sb/100*R.u()};
+      let p = Math.max(0.4, 1 + MC.pl/100*R.n()), q = Math.max(0.2, 1 + MC.rl/100*R.n());
+      for (let n = 0; n < H; n++){ if (n){ p = Math.max(0.3, p*(1 + MC.pd/100*R.n())); q = Math.max(0.1, q*(1 + MC.pd/100*R.n())); }
+        f.yw.push(Math.min(1.25, Math.max(0.75, 1 + MC.yw/100*R.n()))); f.pr.push(p); f.rr.push(q); }
+      const o = mcFlows(r, f, H);
+      pays.push(o.pay === null ? Infinity : o.pay); cums.push(o.cum); npvs.push(o.npv); o.cumY.forEach((c, k) => fan[k].push(c));
+    }
+    pays.sort((a,b)=>a-b); cums.sort((a,b)=>a-b); npvs.sort((a,b)=>a-b); fan.forEach(a => a.sort((x,y)=>x-y));
+    const base = mcFlows(r, mcOnes(H), H);
+    return {r, name: r.v.name.split(' · ')[0], col: CMPC()[vi], pays, cums, npvs, base, H,
+      fan: [0.1, 0.25, 0.5, 0.75, 0.9].map(p => fan.map(a => pct(a, p))),
+      pGoal: pays.filter(x => x <= MC.goal).length/MC.n, pLoss: cums.filter(x => x < 0).length/MC.n,
+      curve: Array.from({length:H+1}, (_, y) => 100*pays.filter(x => x <= y).length/MC.n)};
+  });
+  MC_RES = out; MC_KEY = key; return out;
+}
+// Tornade : effet de chaque incertitude seule (à son 10e et 90e centile) sur les liquidités à l'horizon
+function mcTornado(m){
+  const H = m.H, z = 1.2816, mk = (k, lo) => { const f = mcOnes(H), s = lo ? -1 : 1;
+    if (k === 'yb') f.yb = 1 + s*z*MC.yb/100;
+    if (k === 'yw') f.yw = f.yw.map(() => 1 + s*z*MC.yw/100/Math.sqrt(H));
+    if (k === 'pl') f.pr = f.pr.map(() => Math.max(0.4, 1 + s*z*MC.pl/100));
+    if (k === 'pd') f.pr = f.pr.map((_, n) => Math.max(0.3, 1 + s*z*MC.pd/100*Math.sqrt(n))), f.rr = f.pr.slice();
+    if (k === 'rl') f.rr = f.rr.map(() => Math.max(0.2, 1 + s*z*MC.rl/100));
+    if (k === 'bmin') f.bat = lo ? MC.bmin/100 + 0.1*(1 - MC.bmin/100) : 1 - 0.1*(1 - MC.bmin/100);
+    if (k === 'ov') f.inv = lo ? 1 + 0.9*MC.ov/100 : 1 - 0.15*MC.ov/100;
+    if (k === 'mt') f.mt = Math.max(0.3, 1 - s*z*MC.mt/100);
+    if (k === 'sb') f.sb = lo ? 1 - 0.9*MC.sb/100 : 1 - 0.1*MC.sb/100;
+    return mcFlows(m.r, f, H).cum; };
+  return MC_P.map(([k, t]) => { const a = mk(k, true), b = mk(k, false); return {t, lo: Math.min(a, b) - m.base.cum, hi: Math.max(a, b) - m.base.cum}; })
+    .sort((x, y) => (y.hi - y.lo) - (x.hi - x.lo));
+}
+function renderMC(){
+  const sec = document.getElementById('tab-risk'); if (!sec || !sec.classList.contains('active')) return;
+  const res = mcRun(), H = res[0].H; MC.sel = Math.min(MC.sel, res.length - 1);
+  // réglages
+  const sl = document.getElementById('mcSl');
+  if (!sl.dataset.ok){ sl.dataset.ok = 1;
+    sl.innerHTML = MC_P.map(([k, t, u, mn, mx, st, tip]) => `<label><span>${t} <i class="tip" data-tip="${tip}">i</i></span><input type="range" id="mc_${k}" min="${mn}" max="${mx}" step="${st}"><b id="mcv_${k}"></b></label>`).join('');
+    MC_P.forEach(([k]) => document.getElementById('mc_' + k).oninput = e => { MC[k] = +e.target.value; saveMC(); renderMC(); });
+    document.getElementById('mcGoal').oninput = e => { MC.goal = +e.target.value; saveMC(); renderMC(); };
+    document.getElementById('mcN').onchange = e => { MC.n = +e.target.value; saveMC(); renderMC(); };
+    document.getElementById('mcSeed').onclick = () => { MC.seed = (MC.seed % 999) + 1; saveMC(); renderMC(); };
+    document.getElementById('mcReset').onclick = () => { MC = Object.assign({}, MC_DEF); saveMC(); renderMC(); };
+  }
+  MC_P.forEach(([k, t, u]) => { document.getElementById('mc_' + k).value = MC[k]; document.getElementById('mcv_' + k).textContent = `${fN(MC[k], MC[k] % 1 ? 1 : 0)} — ${u}`; });
+  document.getElementById('mcGoal').value = MC.goal; document.getElementById('mcGoalV').textContent = MC.goal + ' ans'; document.getElementById('mcN').value = MC.n;
+  document.getElementById('mcSeedV').textContent = `tirage n° ${MC.seed}`;
+  const segV = document.getElementById('mcVar');
+  segV.innerHTML = res.map((m, i) => `<button data-k="${i}" class="${i === MC.sel ? 'on' : ''}">${m.name}</button>`).join('');
+  segV.querySelectorAll('button').forEach(b => b.onclick = () => { MC.sel = +b.dataset.k; saveMC(); renderMC(); });
+  // tableau
+  const fP = x => isFinite(x) ? fN(x, 1) + ' ans' : '> ' + H + ' ans', pc = x => fN(100*x, 0) + ' %';
+  const rowsT = [
+    [`Amorti avant ${MC.goal} ans`, m => `<b>${pc(m.pGoal)}</b>`],
+    ['Payé après — cas prévu', m => fY(m.r.payback)],
+    ['Payé après — 1 chance sur 10 de faire mieux que', m => fP(pct(m.pays, 0.1))],
+    ['Payé après — médiane', m => `<b>${fP(pct(m.pays, 0.5))}</b>`],
+    ['Payé après — 9 chances sur 10 d\'être payé avant', m => fP(pct(m.pays, 0.9))],
+    [`Liquidités à ${H} ans — cas défavorable (P10)`, m => fCHF(pct(m.cums, 0.1))],
+    [`Liquidités à ${H} ans — médiane`, m => `<b>${fCHF(pct(m.cums, 0.5))}</b>`],
+    [`Liquidités à ${H} ans — cas favorable (P90)`, m => fCHF(pct(m.cums, 0.9))],
+    [`Risque de perdre de l'argent sur ${H} ans`, m => pc(m.pLoss)],
+    ['Gain net actualisé — médiane', m => fCHF(pct(m.npvs, 0.5))]];
+  document.getElementById('mcTab').innerHTML = `<tr><th></th>${res.map(m => `<th style="color:${m.col}">${m.name}</th>`).join('')}</tr>` +
+    rowsT.map(([t, f]) => `<tr><td>${t}</td>${res.map(m => `<td>${f(m)}</td>`).join('')}</tr>`).join('');
+  // texte
+  const bestG = res.reduce((a, m, i) => m.pGoal > res[a].pGoal ? i : a, 0), bestM = res.reduce((a, m, i) => pct(m.cums, 0.5) > pct(res[a].cums, 0.5) ? i : a, 0), safe = res.reduce((a, m, i) => pct(m.cums, 0.1) > pct(res[a].cums, 0.1) ? i : a, 0);
+  const sel = res[MC.sel], tor = mcTornado(sel);
+  document.getElementById('mcTxt').innerHTML = `Sur <b>${fN(MC.n)} avenirs possibles</b> tirés au hasard, <b>${res[bestG].name}</b> a la meilleure chance d'être entièrement payée avant ${MC.goal} ans (<b>${pc(res[bestG].pGoal)}</b>). `
+    + `${bestM === safe ? `<b>${res[bestM].name}</b> donne à la fois la meilleure médiane et le meilleur cas défavorable à ${H} ans : c'est le choix le plus solide.` : `<b>${res[bestM].name}</b> rapporte le plus en médiane, mais <b>${res[safe].name}</b> résiste le mieux dans les mauvais scénarios (P10 ${fCHF(pct(res[safe].cums, 0.1))} CHF).`} `
+    + (res.some(m => pct(m.pays, 0.5) > (m.r.payback ?? 1e9) + 0.2) ? `La médiane est un peu moins bonne que le cas prévu : plusieurs risques ne jouent que dans un sens (dépassement de coût, subvention réduite, peak shaving moins efficace). ` : '')
+    + `Pour ${sel.name}, le facteur qui pèse le plus est <b>${tor[0].t.toLowerCase()}</b>, puis ${tor[1].t.toLowerCase()}.`
+    + (res.some(m => m.pLoss > 0.005) ? ` Attention : ${res.filter(m => m.pLoss > 0.005).map(m => `${m.name} (${pc(m.pLoss)})`).join(', ')} peut finir en perte dans certains scénarios.` : ` Aucune variante ne finit en perte sur ${H} ans dans les scénarios tirés.`);
+  // courbe « probabilité d'être payé »
+  const yrs = Array.from({length:H+1}, (_, y) => y);
+  chart('mcS', {type:'line', data:{labels:yrs, datasets:res.map(m => ({label:m.name, data:m.curve, borderColor:m.col, backgroundColor:m.col, pointRadius:0, borderWidth:2.2, tension:0.25}))},
+    options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false}, plugins:{tooltip:{callbacks:{title:c => `Après ${c[0].label} ans`, label:c => `${c.dataset.label} : ${fN(c.parsed.y,0)} % des scénarios payés`}}},
+      scales:{x:{title:{display:true, text:'années'}, grid:{display:false}}, y:{min:0, max:100, title:{display:true, text:'% des scénarios entièrement payés'}, grid:{color:'#ecebe6'}}}}});
+  // éventail des liquidités
+  const F = sel.fan, a = (c, o) => c + Math.round(o*255).toString(16).padStart(2, '0');
+  chart('mcFan', {type:'line', data:{labels:yrs, datasets:[
+    {label:'P10', data:F[0], borderWidth:0, pointRadius:0, fill:false},
+    {label:'10 % – 90 % des cas', data:F[4], borderWidth:0, pointRadius:0, backgroundColor:a(sel.col, 0.16), fill:'-1'},
+    {label:'P25', data:F[1], borderWidth:0, pointRadius:0, fill:false},
+    {label:'25 % – 75 % des cas', data:F[3], borderWidth:0, pointRadius:0, backgroundColor:a(sel.col, 0.3), fill:'-1'},
+    {label:'Médiane', data:F[2], borderColor:sel.col, borderWidth:2.4, pointRadius:0},
+    {label:'Cas prévu (sans aléa)', data:sel.base.cumY, borderColor:'#5d5c58', borderDash:[5,4], borderWidth:1.5, pointRadius:0}]},
+    options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false}, plugins:{legend:{labels:{filter:i => !/^P\d/.test(i.text)}}, tooltip:{filter:i => !/^P\d/.test(i.dataset.label), callbacks:{label:c => `${c.dataset.label} : ${fN(c.parsed.y)} CHF`}}},
+      scales:{x:{title:{display:true, text:'années'}, grid:{display:false}}, y:Object.assign({title:{display:true, text:'liquidités cumulées (CHF)'}}, gridY)}}});
+  // tornade
+  chart('mcTor', {type:'bar', data:{labels:tor.map(t => t.t), datasets:[{label:'Écart sur les liquidités', data:tor.map(t => [t.lo, t.hi]), backgroundColor:tor.map(t => a(sel.col, 0.75)), borderRadius:3, barPercentage:0.7}]},
+    options:{indexAxis:'y', maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c => `de ${fN(c.raw[0])} à +${fN(c.raw[1])} CHF`}}},
+      scales:{x:Object.assign({title:{display:true, text:`écart sur les liquidités à ${H} ans vs cas prévu (CHF)`}}, gridY), y:{grid:{display:false}}}}});
+  // histogramme des liquidités
+  const all = res.flatMap(m => [pct(m.cums, 0.01), pct(m.cums, 0.99)]), lo = Math.min(...all), hi = Math.max(...all), nb = 28, w = (hi - lo)/nb || 1;
+  chart('mcHist', {type:'bar', data:{labels:Array.from({length:nb}, (_, k) => fN((lo + (k + 0.5)*w)/1e6, 2)), datasets:res.map(m => { const h = new Array(nb).fill(0); m.cums.forEach(c => { const k = Math.floor((c - lo)/w); if (k >= 0 && k < nb) h[k]++; }); return {label:m.name, data:h.map(x => 100*x/MC.n), backgroundColor:a(m.col, 0.55), borderColor:m.col, borderWidth:1, barPercentage:1, categoryPercentage:1, grouped:false}; })},
+    options:{maintainAspectRatio:false, plugins:{tooltip:{callbacks:{title:c => `≈ ${c[0].label} mio CHF`, label:c => `${c.dataset.label} : ${fN(c.parsed.y,1)} % des scénarios`}}},
+      scales:{x:{title:{display:true, text:`liquidités cumulées à ${H} ans (mio CHF)`}, grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10}}, y:{title:{display:true, text:'% des scénarios'}, grid:{color:'#ecebe6'}}}}});
+  document.getElementById('mcFanT').textContent = `Liquidités cumulées de ${sel.name} année après année`;
+  document.getElementById('mcTorT').textContent = `Ce qui pèse le plus sur ${sel.name}`;
+}
 /* ---------------- Navigation ---------------- */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x===b));
