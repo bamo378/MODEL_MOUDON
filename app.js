@@ -2224,6 +2224,7 @@ function xlHeader(r, right){
   return `<div class="xlhead"><img class="xllogoimg" src="logo-soleol.png" alt="Soleol"><div class="d">${right}</div></div>`;
 }
 function pageFlux(i){
+  if (FIPL === 'old') return pageFluxOld(i);
   const r = RES[i], v = r.v, sh = costSheet(i), C = sh.C, fl = actFlux(i), y1 = fl[0], subCom = v.subCom || 0;
   const today = new Date().toLocaleDateString('fr-CH',{day:'numeric',month:'long',year:'numeric'});
   const surf = C.nb*(C.surfPnx||2.0412), kwc = v.acKwc + v.rueKwc;
@@ -2269,6 +2270,70 @@ function pageFlux(i){
    <div style="text-align:right;margin-top:-34px"><span style="font-weight:700;font-size:11px">Rendement brut</span><br><span style="display:inline-block;background:#c6efce;border:1px solid #000;padding:1px 14px;font-size:11px">${fN(r.net>0?y1.total/r.net*100:0,2)}%</span></div>
    <div class="xprk"><span>Prix de revient moyen du kWh sur 20, 25 et 30 ans<br>(remboursement de l'emprunt compris)</span><b>${fN(prk(20),2)} cts/kWh || ${fN(prk(25),2)} cts/kWh || ${fN(prk(30),2)} cts/kWh</b></div>
    <div class="xfoot">Collaborateur Soleol HBA · autoconsommation et peak shaving simulés au quart d'heure (01.10.2025–30.09.2026)</div></div>`;
+}
+// Mise en page « Old Soleol » : reproduction de la feuille Excel « Tableau client » (même contenu, présentation du fichier d'origine)
+let FIPL = 'new'; try { FIPL = localStorage.getItem('moudon_fiplay') || 'new'; } catch (e) {}
+function pageFluxOld(i){
+  const r = RES[i], v = r.v, sh = costSheet(i), C = sh.C, fl = actFlux(i), y1 = fl[0], subCom = v.subCom || 0;
+  const today = new Date().toLocaleDateString('fr-CH',{day:'numeric',month:'long',year:'numeric'});
+  const surf = C.nb*(C.surfPnx||2.0412), kwc = v.acKwc + v.rueKwc, ass = G.assur*r.price, mnt = G.maint*r.price, depTot = y1.interet + ass + mnt;
+  const prk = n => { const x = fl[n-1]; return x.prodCum ? (r.net + (ass+mnt)*n)/x.prodCum*100 : 0; };
+  const so = x => 'SFr. ' + fCHF(x) + '.-', pc = (x, d = 1) => (x*100).toFixed(d) + '%', kwhSold = r.surplus + v.prodRue;
+  const E = '<td class="e"></td>', row = (a, b = '', c = '', d = '', cls = '') => `<tr class="${cls}"><td class="a">${a}</td><td class="b">${b}</td><td class="cc">${c}</td><td class="d">${d}</td></tr>`;
+  const sp = '<tr class="sp"><td colspan="4"></td></tr>';
+  return `<div class="xlpage xo">${xlHeader(r, 'Calculé le : ' + today)}
+   <div class="xo-cl"><span>${'Model SA à Moudon'}</span><span>${v.name}</span></div>
+   <table class="xog"><colgroup><col style="width:42%"><col style="width:20%"><col style="width:17%"><col style="width:21%"></colgroup>
+    <tr class="ti"><td colspan="4">Flux financiers de l'installation photovoltaïque</td></tr>
+    <tr class="st"><td class="a">avec hypothèque</td><td class="b l">${xe(G.hyp,'g','hyp',{mul:100,d:1})}%</td><td colspan="2"></td></tr>
+    ${sp}
+    <tr class="hd"><td colspan="2">Données de base</td><td class="nb"></td><td class="nb"></td></tr>
+    ${row('nombre de panneaux', xe(C.nb,'c','nb'), '', '', 'bi')}
+    ${row('puissance des panneaux', xe(C.wc,'c','wc') + 'Wc', '', '', 'bi')}
+    ${row('surface de l\'installation', fN(surf) + ' m2', '', '', 'bi')}
+    ${row('puissance nominale', kwc.toFixed(2) + 'kWc', '', '', 'bi')}
+    ${row('Coût par KW (clé en main)', '', '', `<span class="gb">${so(r.price/kwc)}</span>`, 'bi')}
+    ${row('Coût par m2 (clé en main)', '', '', `<span class="gb">${so(r.price/surf)}/m2</span>`, 'bi')}
+    <tr class="bi"><td class="a">vieillissement des panneaux</td><td class="b">${xe(G.deg,'g','deg',{mul:100,d:2})}% par an</td><td colspan="2" class="sm">(≈ ${Math.round(Math.pow(1-G.deg,25)*100)}% de puissance restante après 25 ans)</td></tr>
+    <tr class="bi"><td class="a">Production en 1ère année</td><td class="b">${Math.round(v.prodAc + v.prodRue)} kWh</td><td colspan="2" class="sm">(selon simulation)</td></tr>
+    <tr class="tt"><td class="nb"></td><td colspan="2" class="rt">Total à financer (TVA comprise)</td><td class="d bx">SFr. ${xe(r.price,'price','price',{w:9})}.-</td></tr>
+    ${sp}
+    <tr class="hd"><td>FINANCEMENT</td><td class="c">intérêts</td><td class="c">remboursement</td><td class="c">montant</td></tr>
+    ${row('Rétribution unique touchée', '', '', so(r.sub - subCom), 'bx2 blk2')}
+    ${row('Subvention communale', '0.0%', '0.0%', `SFr. ${xe(subCom,'v','subCom',{w:7})}.-`, 'bx2')}
+    ${row('Fonds propres', '', '0.0%', `SFr. ${xe(G.fp,'g','fp',{w:7})}.-`, 'bx2 blk1')}
+    ${row('hypothèque/Leasing', pc(G.hyp), '<span class="gn">max. possible</span>', so(Math.max(r.net - G.fp, 0)), 'bx2')}
+    <tr class="tt"><td class="nb"></td><td colspan="2" class="rt sm2">Total sources de financement</td><td class="d bx">${so(r.price)}</td></tr>
+    ${sp}
+    <tr class="hd"><td>DEPENSES (1ère année)</td><td class="c">intérêts</td><td class="c">remboursement</td><td class="c">TOTAL</td></tr>
+    ${row('Subvention communale', 'SFr. 0.-', 'SFr. 0.-', 'SFr. 0.-', 'bx2')}
+    ${row('Fonds propres', '', 'SFr. 0.-', 'SFr. 0.-', 'bx2 blk1')}
+    ${row('hypothèque/Leasing', so(y1.interet), '<span class="gn">max. possible</span>', so(y1.interet), 'bx2')}
+    <tr class="sp2"><td colspan="4"></td></tr>
+    ${row('assurances', xe(G.assur,'g','assur',{mul:100,d:1}) + '%', '', so(ass), 'bx2')}
+    ${row('réserve annuelle pour maintenance', xe(G.maint,'g','maint',{mul:100,d:1}) + '%', '', so(mnt), 'bx2')}
+    ${row('', '', '', '', 'bx2 em')}${row('<span class="dot">●</span>', '', '', 'SFr. 0.-', 'bx2')}${row('<span class="dot">●</span>', '', '', 'SFr. 0.-', 'bx2')}${row('<span class="dot">●</span>', '', '', 'SFr. 0.-', 'bx2')}
+    <tr class="tt"><td class="nb"></td><td colspan="2" class="rt sm2">Total des dépenses annuelles</td><td class="d bx">${so(depTot)}</td></tr>
+    ${sp}
+    <tr class="hd"><td>RECETTES</td><td class="c">Prix de vente</td><td colspan="2" class="c">Montant</td></tr>
+    <tr class="rc"><td class="a r">ventes annuelle d'électricité (${fN(kwhSold)} kWh/an)</td><td class="c">${xe(G.rev,'g','rev',{mul:100,d:2})} Cts/kWh</td><td colspan="2" class="c">${so(y1.vente)}</td></tr>
+    <tr class="rc"><td class="a r">auto-consommation de ${(r.tauxAc*100).toFixed(1)}% (${fN(y1.kwhAc)} kWh/an), calculée à</td><td class="c">${xe(v.acPrice,'v','acPrice',{mul:100,d:2})} Cts/kWh</td><td colspan="2" class="c">${so(y1.auto)}</td></tr>
+    ${v.fipPuiss === false ? '' : `<tr class="rc"><td class="a r">Réduction de la puissance de pointe (peak shaving)</td><td class="c">${xe(G.puiss,'g','puiss',{d:2})} SFr/kW/mois</td><td colspan="2" class="c">${so(y1.puiss)}</td></tr>`}
+    ${v.fipQ === false ? '' : `<tr class="rc"><td class="a r">Energie réactive (franchise réduite)</td><td class="c">${xe(G.prixQ,'g','prixQ',{mul:100,d:2})} Cts/kvarh</td><td colspan="2" class="c">${y1.react < 0 ? '-' + so(-y1.react) : so(y1.react)}</td></tr>`}
+    <tr class="rc"><td class="a"></td><td></td><td colspan="2"></td></tr>
+    <tr class="tt"><td class="nb"></td><td class="rt">TOTAL</td><td colspan="2" class="c bx">${so(y1.total)}</td></tr>
+    ${sp}
+    <tr class="cfh"><td colspan="4">Disponible pour rembourser la dette ou autre (CASH-FLOW)</td></tr>
+    <tr class="cf"><td>économie/vente d'électricité</td><td class="r">${so(y1.total)}</td><td colspan="2"></td></tr>
+    <tr class="cf"><td>dépenses totales</td><td class="r ul">${so(depTot)}</td><td colspan="2"></td></tr>
+    <tr class="sp"><td colspan="4"></td></tr>
+    <tr class="cf sol"><td class="r">SOLDE (cash-flow)</td><td class="r">${so(y1.total - depTot)}</td><td></td><td class="c rb">Rendement brut</td></tr>
+    <tr class="cf"><td></td><td></td><td></td><td class="c"><span class="gb2">${(r.net > 0 ? y1.total/r.net*100 : 0).toFixed(2)}%</span></td></tr>
+    ${sp}
+    <tr class="pk"><td>Prix de revient moyen du kWh sur 20, 25 et 30 ans<br><small>(remboursement de l'emprunt compris)</small></td><td colspan="3" class="c"><b>${prk(20).toFixed(2)} cts/kWh || ${prk(25).toFixed(2)} cts/kWh || ${prk(30).toFixed(2)} cts/kWh</b></td></tr>
+    ${sp}
+    <tr class="ft"><td colspan="4">Collaborateur Soleol HBA</td></tr>
+   </table></div>`;
 }
 function pageGraph(i){
   const r = RES[i], v = r.v, fl = actFlux(i), C = window.COSTS[i];
@@ -2421,3 +2486,8 @@ render();
   }).catch(() => {});
   check(true); setInterval(() => check(false), 5*60*1000);
 })();
+// choix de la mise en page du Tableau client (Flux Inv. propre et PDF)
+(function(){ const sg = document.getElementById('fipLay'); if (!sg) return;
+  const upd = () => sg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.l === FIPL));
+  sg.querySelectorAll('button').forEach(b => b.onclick = () => { FIPL = b.dataset.l; try { localStorage.setItem('moudon_fiplay', FIPL); } catch (e) {} upd(); renderXl(); });
+  upd(); })();
