@@ -326,6 +326,7 @@ function renderComp(){
   const best = RES.reduce((a,b,i)=> b.npv > RES[a].npv ? i : a, 0);
   const sorted = RES.map(r=>r.npv).sort((a,b)=>b-a);
   document.getElementById('best').textContent = `Meilleure variante sur le gain net actualisé : ${RES[best].v.name} · ${fCHF(sorted[0]-sorted[1])} CHF d'avance sur la 2e (${fN((sorted[0]-sorted[1])/Math.abs(sorted[0])*100,1)} %).`;
+  if (RES_OPT) document.getElementById('best').textContent += ` La version optimale (${fN(RES_OPT.cell.ru)} kWc RU + ${fN(RES_OPT.cell.rue)} kWc RUE${RES_OPT.cell.bat ? ', batterie '+fN(RES_OPT.cell.bat)+' kWh' : ''}) ferait ${RES_OPT.npv - RES[best].npv >= 0 ? '+' : ''}${fCHF(RES_OPT.npv - RES[best].npv)} CHF par rapport à ${RES[best].v.name.split(' · ')[0]}.`;
   const yrs = Array.from({length:H+1},(_,i)=>i);
   chart('chCum', {type:'line', data:{labels:yrs, datasets: CMP().map((r,i)=>({label:r.v.name, data:[-Math.min(G.fp, r.price)].concat(r.rows.map(x=>x.cum)), borderColor:CMPC()[i], backgroundColor:CMPC()[i], borderDash: r.cell ? [6,3] : [], borderWidth:2.5, pointRadius:0, tension:.1}))},
     options:{interaction:{mode:'index',intersect:false}, plugins:{tooltip:tipCHF, legend:{position:'bottom'}}, scales:{x:{title:{display:true,text:'Années'},grid:{display:false}}, y:{...gridY, title:{display:true,text:'CHF'}}}}});
